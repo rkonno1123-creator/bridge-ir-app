@@ -110,7 +110,7 @@
       cursor: pointer;
       border: 2px solid #fff;
       box-shadow: 0 2px 8px rgba(0,0,0,0.5);
-      transition: transform 0.2s;
+      transition: transform 0.15s;
       z-index: 10;
     }
     .pin:hover {
@@ -134,6 +134,7 @@
       font-size: 10px;
       font-weight: bold;
       color: #fff;
+      white-space: nowrap;
     }
     
     /* 詳細パネル */
@@ -388,9 +389,23 @@
   </style>
 </head>
 <body>
-  <div id="app"></div>
+  <div id="app">
+    <div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#1a1a2e;color:#00d4ff;">
+      読み込み中...
+    </div>
+  </div>
 
   <script>
+    // Firebase読み込みを待つ
+    function waitForFirebase(callback) {
+      if (typeof firebase !== 'undefined') {
+        callback();
+      } else {
+        setTimeout(() => waitForFirebase(callback), 100);
+      }
+    }
+
+    waitForFirebase(function() {
     // Firebase設定
     const firebaseConfig = {
       apiKey: "AIzaSyAiJ-c45y9PE5wfCKFUFunTEqwFRsE5_1I",
@@ -416,7 +431,8 @@
       pins: [],
       selectedPinId: null,
       activeTab: 'visible',
-      distance: 8
+      distance: 8,
+      draggingPin: null
     };
 
     // DOM要素取得
@@ -453,20 +469,21 @@
         </div>
         
         <div class="main-container">
-          <div class="drawing-area" onclick="handleDrawingClick(event)">
+          <div class="drawing-area" onclick="handleDrawingClick(event)" onmousemove="handlePinDrag(event)" onmouseup="handlePinDragEnd(event)">
             ${currentDrawing ? `
               <div class="drawing-wrapper" id="drawingWrapper">
                 <img src="${currentDrawing.url}" class="drawing-image" id="drawingImage" draggable="false">
                 ${currentPins.map((pin, i) => `
                   <div class="pin ${pin.judgment || 'unanalyzed'} ${pin.id === state.selectedPinId ? 'selected' : ''}"
                        style="left: ${pin.x}%; top: ${pin.y}%;"
-                       onclick="event.stopPropagation(); selectPin('${pin.id}')">
-                    <span class="pin-number">${pin.name || (i + 1)}</span>
+                       onclick="event.stopPropagation(); selectPin('${pin.id}')"
+                       onmousedown="handlePinMouseDown(event, '${pin.id}')">
+                    <span class="pin-number">${(pin.name || String(i + 1)).slice(-3)}</span>
                   </div>
                 `).join('')}
               </div>
               <div class="instructions">
-                💡 クリックでピン追加 | ピンクリックで詳細表示
+                💡 クリックでピン追加 | ピンクリックで詳細 | Shift+ドラッグで移動
               </div>
             ` : `
               <div class="empty-state">
@@ -937,6 +954,53 @@
       }
     }
 
+    // ピン移動開始（Shift+クリック）
+    function handlePinMouseDown(e, pinId) {
+      if (e.shiftKey) {
+        e.stopPropagation();
+        e.preventDefault();
+        state.draggingPin = pinId;
+      }
+    }
+
+    // ピンドラッグ中
+    function handlePinDrag(e) {
+      if (!state.draggingPin) return;
+      
+      const wrapper = document.getElementById('drawingWrapper');
+      if (!wrapper) return;
+      
+      const rect = wrapper.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width) * 100;
+      const y = ((e.clientY - rect.top) / rect.height) * 100;
+      
+      const pin = state.pins.find(p => p.id === state.draggingPin);
+      if (pin) {
+        pin.x = Math.max(0, Math.min(100, x));
+        pin.y = Math.max(0, Math.min(100, y));
+        render();
+      }
+    }
+
+    // ピン移動終了
+    async function handlePinDragEnd(e) {
+      if (!state.draggingPin) return;
+      
+      const pin = state.pins.find(p => p.id === state.draggingPin);
+      if (pin) {
+        try {
+          await db.collection('pins').doc(state.draggingPin).update({
+            x: pin.x,
+            y: pin.y
+          });
+        } catch (error) {
+          console.error('ピン移動保存エラー:', error);
+        }
+      }
+      
+      state.draggingPin = null;
+    }
+
     // レポート出力（仮）
     function exportReport() {
       const pin = state.pins.find(p => p.id === state.selectedPinId);
@@ -947,6 +1011,7 @@
 
     // 初期化
     loadData();
+    }); // waitForFirebase end
   </script>
 </body>
 </html>
