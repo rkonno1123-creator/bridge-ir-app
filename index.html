@@ -665,7 +665,11 @@
                   <button class="btn btn-secondary" onclick="deselectAllPins()">全解除</button>
                 </div>
                 <div class="pin-select-list">
-                  ${currentPins.map(pin => `
+                  ${[...currentPins].sort((a, b) => {
+                    const numA = parseInt((a.name || '0').replace(/\D/g, '')) || 0;
+                    const numB = parseInt((b.name || '0').replace(/\D/g, '')) || 0;
+                    return numA - numB;
+                  }).map(pin => `
                     <label class="pin-select-item">
                       <input type="checkbox" ${state.selectedPinsForExport?.includes(pin.id) ? 'checked' : ''} 
                              onchange="togglePinForExport('${pin.id}')">
@@ -691,7 +695,7 @@
               <div class="drawing-wrapper" id="drawingWrapper">
                 <img src="${currentDrawing.url}" class="drawing-image" id="drawingImage" draggable="false">
                 ${currentPins.map((pin, i) => `
-                  <div class="pin ${pin.judgment || 'unanalyzed'} ${pin.id === state.selectedPinId ? 'selected' : ''}"
+                  <div class="pin ${pin.analyzed && pin.judgment ? pin.judgment : 'unanalyzed'} ${pin.id === state.selectedPinId ? 'selected' : ''}"
                        style="left: ${pin.x}%; top: ${pin.y}%; cursor: ${state.editMode ? 'move' : 'pointer'};"
                        onmousedown="handlePinMouseDown(event, '${pin.id}')"
                        ontouchstart="handlePinTouchStart(event, '${pin.id}')">
@@ -1559,6 +1563,13 @@
 
       const selectedPins = state.pins.filter(p => state.selectedPinsForExport.includes(p.id));
       
+      // 番号順にソート
+      selectedPins.sort((a, b) => {
+        const numA = parseInt((a.name || '0').replace(/\D/g, '')) || 0;
+        const numB = parseInt((b.name || '0').replace(/\D/g, '')) || 0;
+        return numA - numB;
+      });
+      
       // 新しいウィンドウでPDFプレビューを開く
       const printWindow = window.open('', '_blank');
       
@@ -1581,24 +1592,86 @@
           <meta charset="UTF-8">
           <title>赤外線解析レポート</title>
           <style>
-            body { font-family: 'Meiryo', sans-serif; padding: 20px; }
-            .page { page-break-after: always; padding: 20px; }
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: 'Meiryo', sans-serif; font-size: 11px; }
+            .page { 
+              page-break-after: always; 
+              padding: 10mm;
+              max-height: 277mm;
+            }
             .page:last-child { page-break-after: auto; }
-            h1 { font-size: 18px; border-bottom: 2px solid #333; padding-bottom: 10px; }
-            h2 { font-size: 14px; margin-top: 20px; }
-            .info-table { width: 100%; border-collapse: collapse; margin: 15px 0; }
-            .info-table td { padding: 8px; border: 1px solid #ddd; }
-            .info-table td:first-child { background: #f5f5f5; width: 120px; font-weight: bold; }
-            .judgment { padding: 5px 10px; border-radius: 4px; display: inline-block; }
+            .header { 
+              font-size: 14px; 
+              font-weight: bold;
+              border-bottom: 2px solid #333; 
+              padding-bottom: 5px;
+              margin-bottom: 8px;
+            }
+            .info-table { 
+              width: 100%; 
+              border-collapse: collapse; 
+              margin-bottom: 8px;
+            }
+            .info-table td { 
+              padding: 4px 8px; 
+              border: 1px solid #ccc;
+              vertical-align: middle;
+            }
+            .info-table td:first-child { 
+              background: #f0f0f0; 
+              width: 150px; 
+              font-weight: bold;
+              white-space: nowrap;
+            }
+            .judgment { 
+              padding: 2px 8px; 
+              border-radius: 3px; 
+              display: inline-block;
+              font-weight: bold;
+            }
             .judgment.healthy { background: #d4edda; color: #155724; }
             .judgment.observe { background: #fff3cd; color: #856404; }
             .judgment.floating { background: #f8d7da; color: #721c24; }
-            .images { display: flex; gap: 15px; margin: 15px 0; flex-wrap: wrap; }
-            .images img { max-width: 300px; max-height: 200px; border: 1px solid #ddd; }
-            .comment { background: #f9f9f9; padding: 15px; border-radius: 4px; white-space: pre-wrap; }
+            .section-title {
+              font-size: 12px;
+              font-weight: bold;
+              margin: 8px 0 5px 0;
+              color: #333;
+            }
+            .images { 
+              display: flex; 
+              gap: 10px; 
+              margin-bottom: 8px;
+            }
+            .images .img-box {
+              text-align: center;
+            }
+            .images .img-box p {
+              font-size: 10px;
+              margin-bottom: 3px;
+              color: #666;
+            }
+            .images img { 
+              max-width: 180px; 
+              max-height: 120px; 
+              border: 1px solid #ddd;
+            }
+            .comment-box { 
+              background: #f9f9f9; 
+              padding: 8px; 
+              border: 1px solid #ddd;
+              border-radius: 3px; 
+              white-space: pre-wrap;
+              font-size: 10px;
+              line-height: 1.4;
+              margin-bottom: 5px;
+            }
+            .additional-comment {
+              min-height: 45px;
+            }
             @media print {
-              body { padding: 0; }
-              .page { padding: 10px; }
+              body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+              .page { padding: 8mm; }
             }
           </style>
         </head>
@@ -1606,32 +1679,32 @@
       `;
 
       for (const pin of selectedPins) {
+        const pinNum = (pin.name || '').replace(/\D/g, '') || '-';
+        const pinFull = pin.name || '-';
+        
         html += `
           <div class="page">
-            <h1>📍 ${pin.name || 'ピン'} - 赤外線解析レポート</h1>
+            <div class="header">📍 ${pinFull} - 赤外線解析レポート</div>
             
             <table class="info-table">
-              <tr><td>ピン名/写真番号</td><td>${pin.name || '-'}</td></tr>
-              <tr><td>撮影距離</td><td>${pin.distance || 8} m</td></tr>
-              <tr><td>GSD</td><td>${calcGSD(pin.distance || 8)} mm/px</td></tr>
+              <tr><td>ピン名 / 写真番号</td><td>${pinNum} / ${pinFull}</td></tr>
+              <tr><td>撮影距離 / GSD</td><td>${pin.distance || 8} m / ${calcGSD(pin.distance || 8)} mm/px</td></tr>
               <tr><td>判定</td><td><span class="judgment ${pin.judgment || ''}">${judgmentLabels[pin.judgment] || '未判定'}</span></td></tr>
               <tr><td>判定フロー</td><td>${flowLabels[pin.judgmentFlow] || '-'}</td></tr>
             </table>
 
-            <h2>📷 画像</h2>
+            <div class="section-title">📷 画像</div>
             <div class="images">
-              ${pin.images?.visible ? `<div><p>可視画像</p><img src="${pin.images.visible.url}"></div>` : ''}
-              ${pin.images?.infrared ? `<div><p>赤外線画像</p><img src="${pin.images.infrared.url}"></div>` : ''}
-              ${pin.images?.color8 ? `<div><p>8色画像</p><img src="${pin.images.color8.url}"></div>` : ''}
+              ${pin.images?.visible ? `<div class="img-box"><p>可視画像</p><img src="${pin.images.visible.url}"></div>` : ''}
+              ${pin.images?.infrared ? `<div class="img-box"><p>赤外線画像</p><img src="${pin.images.infrared.url}"></div>` : ''}
+              ${pin.images?.color8 ? `<div class="img-box"><p>8色画像</p><img src="${pin.images.color8.url}"></div>` : ''}
             </div>
 
-            <h2>📝 解析コメント</h2>
-            <div class="comment">${pin.comment || 'コメントなし'}</div>
+            <div class="section-title">📝 解析コメント</div>
+            <div class="comment-box">${pin.comment || 'コメントなし'}</div>
             
-            ${pin.additionalComment ? `
-              <h2>📝 追加コメント</h2>
-              <div class="comment">${pin.additionalComment}</div>
-            ` : ''}
+            <div class="section-title">📝 追加コメント</div>
+            <div class="comment-box additional-comment">${pin.additionalComment || ''}</div>
           </div>
         `;
       }
