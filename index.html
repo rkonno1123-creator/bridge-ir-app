@@ -507,10 +507,10 @@
                   </div>
                 `).join('')}
               </div>
-              <div class="instructions">
+              <div class="instructions" onclick="event.stopPropagation()">
                 💡 クリックでピン追加 | ピンクリックで詳細
               </div>
-              <button class="edit-mode-btn ${state.editMode ? 'active' : ''}" onclick="toggleEditMode()">
+              <button class="edit-mode-btn ${state.editMode ? 'active' : ''}" onclick="event.stopPropagation(); toggleEditMode()">
                 ${state.editMode ? '✅ 位置調整中' : '📍 ピン位置調整'}
               </button>
             ` : `
@@ -547,6 +547,10 @@
                     <label class="upload-btn">
                       📷 可視画像をアップロード
                       <input type="file" accept="image/*" onchange="uploadImage('visible', this.files[0])">
+                    </label>
+                    <label class="upload-btn" style="background:#9b59b6; border-color:#9b59b6;">
+                      🎯 複数画像を自動振り分け
+                      <input type="file" accept="image/*" multiple onchange="uploadMultipleImages(this.files)">
                     </label>
                   </div>
                 </div>
@@ -863,6 +867,60 @@
       }
     }
 
+    // 複数画像自動振り分けアップロード
+    async function uploadMultipleImages(files) {
+      if (!files || files.length === 0 || !state.selectedPinId) return;
+
+      const pin = state.pins.find(p => p.id === state.selectedPinId);
+      if (!pin) return;
+
+      let uploadCount = 0;
+      pin.images = pin.images || {};
+
+      try {
+        for (const file of files) {
+          const fileName = file.name.toUpperCase();
+          let type = null;
+
+          // ファイル名から自動判定
+          if (fileName.includes('(8)') || fileName.includes('_8')) {
+            type = 'color8';
+          } else if (fileName.includes('VB')) {
+            type = 'visible';
+          } else if (fileName.includes('IR')) {
+            type = 'infrared';
+          }
+
+          if (!type) {
+            console.log(`ファイル ${file.name} は判定できませんでした`);
+            continue;
+          }
+
+          const filename = `${Date.now()}_${file.name}`;
+          const ref = storage.ref().child(`pins/${state.selectedPinId}/${type}/${filename}`);
+          await ref.put(file);
+          const url = await ref.getDownloadURL();
+
+          await db.collection('pins').doc(state.selectedPinId).update({
+            [`images.${type}`]: { url: url, filename: file.name }
+          });
+
+          pin.images[type] = { url: url, filename: file.name };
+          uploadCount++;
+        }
+
+        render();
+        if (uploadCount > 0) {
+          alert(`${uploadCount}枚の画像をアップロードしました`);
+        } else {
+          alert('アップロードできる画像がありませんでした。\nファイル名にVB、IR、(8)が含まれているか確認してください。');
+        }
+      } catch (error) {
+        console.error('アップロードエラー:', error);
+        alert('アップロードに失敗しました');
+      }
+    }
+
     // ピン名更新
     async function updatePinName(value) {
       if (!state.selectedPinId) return;
@@ -1095,6 +1153,7 @@
     window.closePanel = closePanel;
     window.setTab = setTab;
     window.uploadImage = uploadImage;
+    window.uploadMultipleImages = uploadMultipleImages;
     window.updatePinName = updatePinName;
     window.updateDistance = updateDistance;
     window.updateJudgment = updateJudgment;
