@@ -99,6 +99,28 @@
       font-size: 0.75rem;
       color: #888;
     }
+    .edit-mode-btn {
+      position: absolute;
+      bottom: 15px;
+      right: 15px;
+      background: rgba(0,0,0,0.7);
+      border: 1px solid #444;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      color: #aaa;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .edit-mode-btn:hover {
+      border-color: #00d4ff;
+      color: #fff;
+    }
+    .edit-mode-btn.active {
+      background: #00d4ff;
+      color: #000;
+      border-color: #00d4ff;
+    }
     
     /* ピン */
     .pin {
@@ -432,7 +454,8 @@
       selectedPinId: null,
       activeTab: 'visible',
       distance: 8,
-      draggingPin: null
+      draggingPin: null,
+      editMode: false
     };
 
     // DOM要素取得
@@ -469,21 +492,27 @@
         </div>
         
         <div class="main-container">
-          <div class="drawing-area" onclick="handleDrawingClick(event)" onmousemove="handlePinDrag(event)" onmouseup="handlePinDragEnd(event)">
+          <div class="drawing-area" onclick="handleDrawingClick(event)" 
+               onmousemove="handlePinDrag(event)" onmouseup="handlePinDragEnd(event)"
+               ontouchmove="handleTouchDrag(event)" ontouchend="handlePinDragEnd(event)">
             ${currentDrawing ? `
               <div class="drawing-wrapper" id="drawingWrapper">
                 <img src="${currentDrawing.url}" class="drawing-image" id="drawingImage" draggable="false">
                 ${currentPins.map((pin, i) => `
                   <div class="pin ${pin.judgment || 'unanalyzed'} ${pin.id === state.selectedPinId ? 'selected' : ''}"
-                       style="left: ${pin.x}%; top: ${pin.y}%;"
-                       onmousedown="handlePinMouseDown(event, '${pin.id}')">
+                       style="left: ${pin.x}%; top: ${pin.y}%; cursor: ${state.editMode ? 'move' : 'pointer'};"
+                       onmousedown="handlePinMouseDown(event, '${pin.id}')"
+                       ontouchstart="handlePinTouchStart(event, '${pin.id}')">
                     <span class="pin-number">${(pin.name || String(i + 1)).slice(-3)}</span>
                   </div>
                 `).join('')}
               </div>
               <div class="instructions">
-                💡 クリックでピン追加 | ピンクリックで詳細 | Shift+ドラッグで移動
+                💡 クリックでピン追加 | ピンクリックで詳細
               </div>
+              <button class="edit-mode-btn ${state.editMode ? 'active' : ''}" onclick="toggleEditMode()">
+                ${state.editMode ? '✅ 位置調整中' : '📍 ピン位置調整'}
+              </button>
             ` : `
               <div class="empty-state">
                 図面を追加してください
@@ -754,6 +783,9 @@
       const wrapper = document.getElementById('drawingWrapper');
       if (!wrapper || !state.currentDrawingId) return;
       
+      // 編集モード時はピン追加しない
+      if (state.editMode) return;
+      
       // ピンクリックは除外
       if (e.target.closest('.pin')) return;
 
@@ -956,14 +988,21 @@
     // ピンクリック/移動開始
     function handlePinMouseDown(e, pinId) {
       e.stopPropagation();
-      if (e.shiftKey) {
-        // Shift+クリック = 移動モード
+      if (state.editMode) {
+        // 編集モード = ドラッグで移動
         e.preventDefault();
         state.draggingPin = pinId;
       } else {
-        // 通常クリック = 詳細表示
+        // 通常モード = 詳細表示
         selectPin(pinId);
       }
+    }
+    
+    // 編集モード切り替え
+    function toggleEditMode() {
+      state.editMode = !state.editMode;
+      state.draggingPin = null;
+      render();
     }
 
     // ピンドラッグ中
@@ -976,6 +1015,38 @@
       const rect = wrapper.getBoundingClientRect();
       const x = ((e.clientX - rect.left) / rect.width) * 100;
       const y = ((e.clientY - rect.top) / rect.height) * 100;
+      
+      const pin = state.pins.find(p => p.id === state.draggingPin);
+      if (pin) {
+        pin.x = Math.max(0, Math.min(100, x));
+        pin.y = Math.max(0, Math.min(100, y));
+        render();
+      }
+    }
+
+    // タッチ開始
+    function handlePinTouchStart(e, pinId) {
+      e.stopPropagation();
+      if (state.editMode) {
+        e.preventDefault();
+        state.draggingPin = pinId;
+      } else {
+        selectPin(pinId);
+      }
+    }
+
+    // タッチドラッグ
+    function handleTouchDrag(e) {
+      if (!state.draggingPin) return;
+      e.preventDefault();
+      
+      const touch = e.touches[0];
+      const wrapper = document.getElementById('drawingWrapper');
+      if (!wrapper) return;
+      
+      const rect = wrapper.getBoundingClientRect();
+      const x = ((touch.clientX - rect.left) / rect.width) * 100;
+      const y = ((touch.clientY - rect.top) / rect.height) * 100;
       
       const pin = state.pins.find(p => p.id === state.draggingPin);
       if (pin) {
