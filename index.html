@@ -384,6 +384,118 @@
       background: #d35400;
     }
     
+    /* ヘッダーアクション */
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+    .btn-pdf-export {
+      padding: 8px 16px;
+      background: #e74c3c;
+      border: none;
+      border-radius: 6px;
+      color: #fff;
+      cursor: pointer;
+      font-size: 0.85rem;
+      white-space: nowrap;
+    }
+    .btn-pdf-export:hover {
+      background: #c0392b;
+    }
+    
+    /* モーダル */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    .modal-content {
+      background: #16213e;
+      border-radius: 8px;
+      width: 90%;
+      max-width: 500px;
+      max-height: 80vh;
+      display: flex;
+      flex-direction: column;
+      border: 1px solid #00d4ff33;
+    }
+    .modal-header {
+      padding: 15px 20px;
+      border-bottom: 1px solid #00d4ff33;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .modal-header h2 {
+      font-size: 1rem;
+      color: #00d4ff;
+    }
+    .close-btn {
+      background: none;
+      border: none;
+      color: #666;
+      font-size: 1.5rem;
+      cursor: pointer;
+    }
+    .close-btn:hover { color: #fff; }
+    .modal-body {
+      padding: 20px;
+      overflow-y: auto;
+      flex: 1;
+    }
+    .modal-footer {
+      padding: 15px 20px;
+      border-top: 1px solid #00d4ff33;
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+    .select-all-btns {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+    .pin-select-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .pin-select-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px;
+      background: #0a0a15;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .pin-select-item:hover {
+      background: #1a1a30;
+    }
+    .pin-select-item input {
+      width: 18px;
+      height: 18px;
+    }
+    .pin-select-name {
+      flex: 1;
+    }
+    .pin-select-status {
+      color: #666;
+    }
+    .pin-select-status.analyzed {
+      color: #27ae60;
+    }
+    
     /* トリミングリスト */
     .crop-list {
       margin-top: 15px;
@@ -498,7 +610,9 @@
       draggingPin: null,
       editMode: false,
       isDrawingArea: false,
-      tempArea: null
+      tempArea: null,
+      showPdfModal: false,
+      selectedPinsForExport: []
     };
 
     // DOM要素取得
@@ -522,17 +636,52 @@
       app.innerHTML = `
         <div class="header">
           <h1>🔥 橋梁赤外線解析システム</h1>
-          <div class="drawing-tabs">
-            ${state.drawings.map(d => `
-              <div class="drawing-tab ${d.id === state.currentDrawingId ? 'active' : ''}" 
-                   onclick="switchDrawing('${d.id}')">
-                ${d.name}
-                <span class="delete-drawing" onclick="event.stopPropagation(); deleteDrawing('${d.id}')">×</span>
-              </div>
-            `).join('')}
-            <div class="drawing-tab add" onclick="addDrawing()">＋ 図面追加</div>
+          <div class="header-actions">
+            <button class="btn-pdf-export" onclick="openPdfExportModal()">📄 PDFエクスポート</button>
+            <div class="drawing-tabs">
+              ${state.drawings.map(d => `
+                <div class="drawing-tab ${d.id === state.currentDrawingId ? 'active' : ''}" 
+                     onclick="switchDrawing('${d.id}')">
+                  ${d.name}
+                  <span class="delete-drawing" onclick="event.stopPropagation(); deleteDrawing('${d.id}')">×</span>
+                </div>
+              `).join('')}
+              <div class="drawing-tab add" onclick="addDrawing()">＋ 図面追加</div>
+            </div>
           </div>
         </div>
+        
+        ${state.showPdfModal ? `
+          <div class="modal-overlay" onclick="closePdfExportModal()">
+            <div class="modal-content" onclick="event.stopPropagation()">
+              <div class="modal-header">
+                <h2>📄 PDFエクスポート</h2>
+                <button class="close-btn" onclick="closePdfExportModal()">×</button>
+              </div>
+              <div class="modal-body">
+                <p style="margin-bottom: 15px;">エクスポートするピンを選択してください：</p>
+                <div class="select-all-btns">
+                  <button class="btn btn-secondary" onclick="selectAllPins()">全選択</button>
+                  <button class="btn btn-secondary" onclick="deselectAllPins()">全解除</button>
+                </div>
+                <div class="pin-select-list">
+                  ${currentPins.map(pin => `
+                    <label class="pin-select-item">
+                      <input type="checkbox" ${state.selectedPinsForExport?.includes(pin.id) ? 'checked' : ''} 
+                             onchange="togglePinForExport('${pin.id}')">
+                      <span class="pin-select-name">${pin.name || 'ピン'}</span>
+                      <span class="pin-select-status ${pin.analyzed ? 'analyzed' : ''}">${pin.analyzed ? '✅' : '○'}</span>
+                    </label>
+                  `).join('')}
+                </div>
+              </div>
+              <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closePdfExportModal()">キャンセル</button>
+                <button class="btn btn-primary" onclick="generatePdf()">PDFを生成</button>
+              </div>
+            </div>
+          </div>
+        ` : ''}
         
         <div class="main-container">
           <div class="drawing-area" onclick="handleDrawingClick(event)" 
@@ -551,10 +700,10 @@
                 `).join('')}
               </div>
               <div class="instructions" onclick="event.stopPropagation()">
-                💡 クリックでピン追加 | ピンクリックで詳細
+                ${state.editMode ? '💡 クリックでピン追加 | ドラッグで移動' : '💡 ピンクリックで詳細表示'}
               </div>
               <button class="edit-mode-btn ${state.editMode ? 'active' : ''}" onclick="event.stopPropagation(); toggleEditMode()">
-                ${state.editMode ? '✅ 位置調整中' : '📍 ピン位置調整'}
+                ${state.editMode ? '✅ 編集中（追加・移動）' : '📍 ピン編集'}
               </button>
             ` : `
               <div class="empty-state">
@@ -733,8 +882,8 @@
                     ✨ コメント自動生成
                   </button>
                   
-                  <button class="btn btn-export" onclick="exportReport()">
-                    📄 レポートを出力
+                  <button class="btn ${selectedPin.analyzed ? 'btn-success' : 'btn-export'}" onclick="toggleAnalyzed()">
+                    ${selectedPin.analyzed ? '✅ 解析完了' : '📝 解析完了にする'}
                   </button>
                   
                   <div class="btn-group">
@@ -878,8 +1027,8 @@
       const wrapper = document.getElementById('drawingWrapper');
       if (!wrapper || !state.currentDrawingId) return;
       
-      // 編集モード時はピン追加しない
-      if (state.editMode) return;
+      // 編集モードじゃない時はピン追加しない
+      if (!state.editMode) return;
       
       // ピンクリックは除外
       if (e.target.closest('.pin')) return;
@@ -1344,12 +1493,165 @@
       state.draggingPin = null;
     }
 
-    // レポート出力（仮）
-    function exportReport() {
+    // 解析完了/未完了を切り替え
+    async function toggleAnalyzed() {
+      if (!state.selectedPinId) return;
+      
       const pin = state.pins.find(p => p.id === state.selectedPinId);
       if (!pin) return;
+      
+      pin.analyzed = !pin.analyzed;
+      
+      try {
+        await db.collection('pins').doc(state.selectedPinId).update({
+          analyzed: pin.analyzed
+        });
+      } catch (error) {
+        console.error('解析状態更新エラー:', error);
+      }
+      
+      render();
+    }
 
-      alert(`レポート出力機能は次のステップで実装します。\n\nピン: ${pin.name || 'No Name'}\n判定: ${pin.judgment || '未判定'}`);
+    // PDFエクスポートモーダルを開く
+    function openPdfExportModal() {
+      const currentPins = state.pins.filter(p => p.drawingId === state.currentDrawingId);
+      state.selectedPinsForExport = currentPins.map(p => p.id); // デフォルトで全選択
+      state.showPdfModal = true;
+      render();
+    }
+
+    // PDFエクスポートモーダルを閉じる
+    function closePdfExportModal() {
+      state.showPdfModal = false;
+      render();
+    }
+
+    // 全選択
+    function selectAllPins() {
+      const currentPins = state.pins.filter(p => p.drawingId === state.currentDrawingId);
+      state.selectedPinsForExport = currentPins.map(p => p.id);
+      render();
+    }
+
+    // 全解除
+    function deselectAllPins() {
+      state.selectedPinsForExport = [];
+      render();
+    }
+
+    // ピン選択を切り替え
+    function togglePinForExport(pinId) {
+      if (state.selectedPinsForExport.includes(pinId)) {
+        state.selectedPinsForExport = state.selectedPinsForExport.filter(id => id !== pinId);
+      } else {
+        state.selectedPinsForExport.push(pinId);
+      }
+      render();
+    }
+
+    // PDF生成
+    async function generatePdf() {
+      if (state.selectedPinsForExport.length === 0) {
+        alert('エクスポートするピンを選択してください');
+        return;
+      }
+
+      const selectedPins = state.pins.filter(p => state.selectedPinsForExport.includes(p.id));
+      
+      // 新しいウィンドウでPDFプレビューを開く
+      const printWindow = window.open('', '_blank');
+      
+      const judgmentLabels = {
+        healthy: '健全部',
+        observe: '観察',
+        floating: '浮きの可能性あり'
+      };
+      
+      const flowLabels = {
+        flow1: '第一条件：統計値ベース（σ基準）',
+        flow2: '第二条件：局所レンジ方式（Max-Min）',
+        flow3: '第三条件：試験体基準（参考）'
+      };
+
+      let html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>赤外線解析レポート</title>
+          <style>
+            body { font-family: 'Meiryo', sans-serif; padding: 20px; }
+            .page { page-break-after: always; padding: 20px; }
+            .page:last-child { page-break-after: auto; }
+            h1 { font-size: 18px; border-bottom: 2px solid #333; padding-bottom: 10px; }
+            h2 { font-size: 14px; margin-top: 20px; }
+            .info-table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+            .info-table td { padding: 8px; border: 1px solid #ddd; }
+            .info-table td:first-child { background: #f5f5f5; width: 120px; font-weight: bold; }
+            .judgment { padding: 5px 10px; border-radius: 4px; display: inline-block; }
+            .judgment.healthy { background: #d4edda; color: #155724; }
+            .judgment.observe { background: #fff3cd; color: #856404; }
+            .judgment.floating { background: #f8d7da; color: #721c24; }
+            .images { display: flex; gap: 15px; margin: 15px 0; flex-wrap: wrap; }
+            .images img { max-width: 300px; max-height: 200px; border: 1px solid #ddd; }
+            .comment { background: #f9f9f9; padding: 15px; border-radius: 4px; white-space: pre-wrap; }
+            @media print {
+              body { padding: 0; }
+              .page { padding: 10px; }
+            }
+          </style>
+        </head>
+        <body>
+      `;
+
+      for (const pin of selectedPins) {
+        html += `
+          <div class="page">
+            <h1>📍 ${pin.name || 'ピン'} - 赤外線解析レポート</h1>
+            
+            <table class="info-table">
+              <tr><td>ピン名/写真番号</td><td>${pin.name || '-'}</td></tr>
+              <tr><td>撮影距離</td><td>${pin.distance || 8} m</td></tr>
+              <tr><td>GSD</td><td>${calcGSD(pin.distance || 8)} mm/px</td></tr>
+              <tr><td>判定</td><td><span class="judgment ${pin.judgment || ''}">${judgmentLabels[pin.judgment] || '未判定'}</span></td></tr>
+              <tr><td>判定フロー</td><td>${flowLabels[pin.judgmentFlow] || '-'}</td></tr>
+            </table>
+
+            <h2>📷 画像</h2>
+            <div class="images">
+              ${pin.images?.visible ? `<div><p>可視画像</p><img src="${pin.images.visible.url}"></div>` : ''}
+              ${pin.images?.infrared ? `<div><p>赤外線画像</p><img src="${pin.images.infrared.url}"></div>` : ''}
+              ${pin.images?.color8 ? `<div><p>8色画像</p><img src="${pin.images.color8.url}"></div>` : ''}
+            </div>
+
+            <h2>📝 解析コメント</h2>
+            <div class="comment">${pin.comment || 'コメントなし'}</div>
+            
+            ${pin.additionalComment ? `
+              <h2>📝 追加コメント</h2>
+              <div class="comment">${pin.additionalComment}</div>
+            ` : ''}
+          </div>
+        `;
+      }
+
+      html += `
+        </body>
+        </html>
+      `;
+
+      printWindow.document.write(html);
+      printWindow.document.close();
+      
+      // 画像読み込みを待ってから印刷ダイアログを開く
+      printWindow.onload = function() {
+        setTimeout(() => {
+          printWindow.print();
+        }, 500);
+      };
+
+      closePdfExportModal();
     }
 
     // 初期化
@@ -1373,7 +1675,13 @@
     window.updateAdditionalComment = updateAdditionalComment;
     window.generateComment = generateComment;
     window.deletePin = deletePin;
-    window.exportReport = exportReport;
+    window.toggleAnalyzed = toggleAnalyzed;
+    window.openPdfExportModal = openPdfExportModal;
+    window.closePdfExportModal = closePdfExportModal;
+    window.selectAllPins = selectAllPins;
+    window.deselectAllPins = deselectAllPins;
+    window.togglePinForExport = togglePinForExport;
+    window.generatePdf = generatePdf;
     window.toggleEditMode = toggleEditMode;
     window.toggleDrawingArea = toggleDrawingArea;
     window.handleAreaMouseDown = handleAreaMouseDown;
