@@ -343,6 +343,47 @@
     }
     .btn-group .btn { flex: 1; }
     
+    /* 範囲選択オーバーレイ */
+    .image-with-overlay {
+      position: relative;
+      display: inline-block;
+      cursor: crosshair;
+    }
+    .image-with-overlay img {
+      max-width: 100%;
+      max-height: 250px;
+      border-radius: 4px;
+      user-select: none;
+      -webkit-user-drag: none;
+    }
+    .area-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+    .thermal-area-controls {
+      display: flex;
+      gap: 10px;
+      margin: 10px 0;
+    }
+    .btn-secondary {
+      background: #444;
+      color: #fff;
+    }
+    .btn-secondary:hover {
+      background: #555;
+    }
+    .btn-warning {
+      background: #e67e22;
+      color: #fff;
+    }
+    .btn-warning:hover {
+      background: #d35400;
+    }
+    
     /* トリミングリスト */
     .crop-list {
       margin-top: 15px;
@@ -455,7 +496,9 @@
       activeTab: 'visible',
       distance: 8,
       draggingPin: null,
-      editMode: false
+      editMode: false,
+      isDrawingArea: false,
+      tempArea: null
     };
 
     // DOM要素取得
@@ -539,9 +582,57 @@
                 <div class="tab-pane ${state.activeTab === 'visible' ? 'active' : ''}">
                   <div class="image-display">
                     ${selectedPin.images?.visible ? `
-                      <img src="${selectedPin.images.visible.url}" alt="可視画像">
+                      <div class="image-with-overlay" 
+                           onmousedown="handleAreaMouseDown(event)"
+                           onmousemove="handleAreaMouseMove(event)"
+                           onmouseup="handleAreaMouseUp(event)"
+                           ontouchstart="handleAreaTouchStart(event)"
+                           ontouchmove="handleAreaTouchMove(event)"
+                           ontouchend="handleAreaMouseUp(event)">
+                        <img src="${selectedPin.images.visible.url}" alt="可視画像" id="visibleImage" draggable="false">
+                        <svg class="area-overlay">
+                          ${selectedPin.thermalArea ? `
+                            <rect
+                              x="${Math.min(selectedPin.thermalArea.startX, selectedPin.thermalArea.endX)}%"
+                              y="${Math.min(selectedPin.thermalArea.startY, selectedPin.thermalArea.endY)}%"
+                              width="${Math.abs(selectedPin.thermalArea.endX - selectedPin.thermalArea.startX)}%"
+                              height="${Math.abs(selectedPin.thermalArea.endY - selectedPin.thermalArea.startY)}%"
+                              fill="rgba(255, 0, 0, 0.2)"
+                              stroke="#ff0000"
+                              stroke-width="3"
+                            />
+                            <text
+                              x="${Math.min(selectedPin.thermalArea.startX, selectedPin.thermalArea.endX)}%"
+                              y="${Math.max(0, Math.min(selectedPin.thermalArea.startY, selectedPin.thermalArea.endY) - 1)}%"
+                              fill="#ff0000"
+                              font-size="12"
+                              font-weight="bold"
+                            >IR SCAN AREA</text>
+                          ` : ''}
+                          ${state.tempArea ? `
+                            <rect
+                              x="${Math.min(state.tempArea.startX, state.tempArea.endX)}%"
+                              y="${Math.min(state.tempArea.startY, state.tempArea.endY)}%"
+                              width="${Math.abs(state.tempArea.endX - state.tempArea.startX)}%"
+                              height="${Math.abs(state.tempArea.endY - state.tempArea.startY)}%"
+                              fill="rgba(255, 0, 0, 0.15)"
+                              stroke="#ff0000"
+                              stroke-width="2"
+                              stroke-dasharray="5,5"
+                            />
+                          ` : ''}
+                        </svg>
+                      </div>
                       <div class="image-filename">${selectedPin.images.visible.filename}</div>
                     ` : `<div class="no-image">画像なし</div>`}
+                  </div>
+                  <div class="thermal-area-controls">
+                    <button class="btn ${state.isDrawingArea ? 'btn-warning' : 'btn-secondary'}" onclick="toggleDrawingArea()">
+                      ${state.isDrawingArea ? '✏️ 描画中...' : '📐 IR範囲を描画'}
+                    </button>
+                    ${selectedPin.thermalArea ? `
+                      <button class="btn btn-danger" onclick="deleteThermalArea()">🗑️ 範囲削除</button>
+                    ` : ''}
                   </div>
                   <div class="upload-area">
                     <label class="upload-btn">
@@ -1063,6 +1154,126 @@
       render();
     }
 
+    // IR範囲描画モード切り替え
+    function toggleDrawingArea() {
+      state.isDrawingArea = !state.isDrawingArea;
+      if (!state.isDrawingArea) {
+        state.tempArea = null;
+      }
+      render();
+    }
+
+    // 範囲描画開始（マウス）
+    function handleAreaMouseDown(e) {
+      if (!state.isDrawingArea) return;
+      
+      const img = document.getElementById('visibleImage');
+      if (!img) return;
+      
+      e.preventDefault();
+      const rect = img.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width) * 100;
+      const y = ((e.clientY - rect.top) / rect.height) * 100;
+      
+      state.tempArea = { startX: x, startY: y, endX: x, endY: y };
+      render();
+    }
+
+    // 範囲描画中（マウス）
+    function handleAreaMouseMove(e) {
+      if (!state.isDrawingArea || !state.tempArea) return;
+      
+      const img = document.getElementById('visibleImage');
+      if (!img) return;
+      
+      e.preventDefault();
+      const rect = img.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width) * 100;
+      const y = ((e.clientY - rect.top) / rect.height) * 100;
+      
+      state.tempArea.endX = x;
+      state.tempArea.endY = y;
+      render();
+    }
+
+    // 範囲描画終了
+    async function handleAreaMouseUp(e) {
+      if (!state.isDrawingArea || !state.tempArea) return;
+      
+      const pin = state.pins.find(p => p.id === state.selectedPinId);
+      if (!pin) return;
+      
+      // 範囲を確定して保存
+      pin.thermalArea = { ...state.tempArea };
+      
+      try {
+        await db.collection('pins').doc(state.selectedPinId).update({
+          thermalArea: pin.thermalArea
+        });
+      } catch (error) {
+        console.error('範囲保存エラー:', error);
+      }
+      
+      state.tempArea = null;
+      state.isDrawingArea = false;
+      render();
+    }
+
+    // 範囲描画開始（タッチ）
+    function handleAreaTouchStart(e) {
+      if (!state.isDrawingArea) return;
+      
+      const img = document.getElementById('visibleImage');
+      if (!img) return;
+      
+      e.preventDefault();
+      const touch = e.touches[0];
+      const rect = img.getBoundingClientRect();
+      const x = ((touch.clientX - rect.left) / rect.width) * 100;
+      const y = ((touch.clientY - rect.top) / rect.height) * 100;
+      
+      state.tempArea = { startX: x, startY: y, endX: x, endY: y };
+      render();
+    }
+
+    // 範囲描画中（タッチ）
+    function handleAreaTouchMove(e) {
+      if (!state.isDrawingArea || !state.tempArea) return;
+      
+      const img = document.getElementById('visibleImage');
+      if (!img) return;
+      
+      e.preventDefault();
+      const touch = e.touches[0];
+      const rect = img.getBoundingClientRect();
+      const x = ((touch.clientX - rect.left) / rect.width) * 100;
+      const y = ((touch.clientY - rect.top) / rect.height) * 100;
+      
+      state.tempArea.endX = x;
+      state.tempArea.endY = y;
+      render();
+    }
+
+    // 範囲削除
+    async function deleteThermalArea() {
+      if (!state.selectedPinId || !confirm('IR範囲を削除しますか？')) return;
+      
+      const pin = state.pins.find(p => p.id === state.selectedPinId);
+      if (!pin) return;
+      
+      pin.thermalArea = null;
+      
+      try {
+        await db.collection('pins').doc(state.selectedPinId).update({
+          thermalArea: null
+        });
+      } catch (error) {
+        console.error('範囲削除エラー:', error);
+      }
+      
+      render();
+    }
+
     // ピンドラッグ中
     function handlePinDrag(e) {
       if (!state.draggingPin) return;
@@ -1164,6 +1375,13 @@
     window.deletePin = deletePin;
     window.exportReport = exportReport;
     window.toggleEditMode = toggleEditMode;
+    window.toggleDrawingArea = toggleDrawingArea;
+    window.handleAreaMouseDown = handleAreaMouseDown;
+    window.handleAreaMouseMove = handleAreaMouseMove;
+    window.handleAreaMouseUp = handleAreaMouseUp;
+    window.handleAreaTouchStart = handleAreaTouchStart;
+    window.handleAreaTouchMove = handleAreaTouchMove;
+    window.deleteThermalArea = deleteThermalArea;
     window.handlePinMouseDown = handlePinMouseDown;
     window.handlePinDrag = handlePinDrag;
     window.handlePinDragEnd = handlePinDragEnd;
