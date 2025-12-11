@@ -1119,6 +1119,7 @@
       if (!pin) return;
 
       let uploadCount = 0;
+      let extractedName = null;
       pin.images = pin.images || {};
 
       try {
@@ -1140,6 +1141,17 @@
             continue;
           }
 
+          // 写真番号を抽出（最初の1回だけ）
+          if (!extractedName) {
+            const baseName = file.name.replace(/\.[^.]+$/, ''); // 拡張子除去
+            extractedName = baseName
+              .replace(/VB$/i, '')
+              .replace(/IR$/i, '')
+              .replace(/\(8\)$/i, '')
+              .replace(/_8$/i, '')
+              .trim();
+          }
+
           const filename = `${Date.now()}_${file.name}`;
           const ref = storage.ref().child(`pins/${state.selectedPinId}/${type}/${filename}`);
           await ref.put(file);
@@ -1151,6 +1163,12 @@
 
           pin.images[type] = { url: url, filename: file.name };
           uploadCount++;
+        }
+
+        // 写真番号を自動セット（pin.nameが空の場合のみ）
+        if (extractedName && !pin.name) {
+          pin.name = extractedName;
+          await db.collection('pins').doc(state.selectedPinId).update({ name: extractedName });
         }
 
         render();
