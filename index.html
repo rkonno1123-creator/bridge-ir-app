@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>橋梁赤外線解析システム</title>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { 
+      font-family: 'Meiryo UI', -apple-system, BlinkMacSystemFont, sans-serif; 
+      background: #1a1a2e; 
+      color: #eee; 
+      height: 100vh;
+      overflow: hidden;
+    }
+    
+    /* ヘッダー */
+    .header {
+      background: #16213e;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid #00d4ff33;
+    }
+    .header h1 {
+      font-size: 1.2rem;
+      color: #00d4ff;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .drawing-tabs {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .drawing-tab {
+      padding: 8px 16px;
+      background: #0a0a15;
+      border: 1px solid #333;
+      border-radius: 6px;
+      color: #aaa;
+      cursor: pointer;
+      font-size: 0.85rem;
+      transition: all 0.2s;
+    }
+    .drawing-tab:hover { border-color: #00d4ff; color: #fff; }
+    .drawing-tab.active { background: #00d4ff; color: #000; border-color: #00d4ff; }
+    .drawing-tab.add { background: #27ae60; color: #fff; border-color: #27ae60; }
+    .delete-drawing { 
+      margin-left: 6px; 
+      color: #ff6b6b; 
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .delete-drawing:hover { color: #ff0000; }
+    
+    /* メインコンテンツ */
+    .main-container {
+      display: flex;
+      height: calc(100vh - 60px);
+    }
+    
+    /* 図面エリア */
+    .drawing-area {
+      flex: 1;
+      position: relative;
+      overflow: auto;
+      background: #0a0a15;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .drawing-wrapper {
+      position: relative;
+      display: inline-block;
+    }
+    .drawing-image {
+      max-width: 100%;
+      max-height: calc(100vh - 80px);
+      display: block;
+    }
+    .empty-state {
+      color: #444;
+      font-size: 1rem;
+      text-align: center;
+    }
+    .instructions {
+      position: absolute;
+      bottom: 15px;
+      left: 15px;
+      background: rgba(0,0,0,0.7);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      color: #888;
+    }
+    
+    /* ピン */
+    .pin {
+      position: absolute;
+      width: 24px;
+      height: 24px;
+      border-radius: 50% 50% 50% 0;
+      transform: translate(-50%, -100%) rotate(-45deg);
+      cursor: pointer;
+      border: 2px solid #fff;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+      transition: transform 0.2s;
+      z-index: 10;
+    }
+    .pin:hover {
+      transform: translate(-50%, -100%) rotate(-45deg) scale(1.2);
+      z-index: 20;
+    }
+    .pin.selected {
+      transform: translate(-50%, -100%) rotate(-45deg) scale(1.3);
+      z-index: 30;
+      box-shadow: 0 0 15px rgba(0, 212, 255, 0.8);
+    }
+    .pin.healthy { background: #27ae60; }
+    .pin.observe { background: #f39c12; }
+    .pin.floating { background: #e74c3c; }
+    .pin.unanalyzed { background: #666; }
+    .pin-number {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) rotate(45deg);
+      font-size: 10px;
+      font-weight: bold;
+      color: #fff;
+    }
+    
+    /* 詳細パネル */
+    .detail-panel {
+      width: 450px;
+      background: #16213e;
+      border-left: 1px solid #00d4ff33;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .detail-panel.collapsed { width: 0; border: none; }
+    
+    .panel-header {
+      padding: 15px;
+      border-bottom: 1px solid #00d4ff33;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .panel-header h2 {
+      font-size: 1rem;
+      color: #00d4ff;
+    }
+    .close-panel {
+      background: none;
+      border: none;
+      color: #666;
+      font-size: 1.5rem;
+      cursor: pointer;
+    }
+    .close-panel:hover { color: #fff; }
+    
+    /* タブ */
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid #333;
+    }
+    .tab {
+      flex: 1;
+      padding: 12px 8px;
+      background: none;
+      border: none;
+      color: #666;
+      cursor: pointer;
+      font-size: 0.8rem;
+      transition: all 0.2s;
+    }
+    .tab:hover { color: #aaa; }
+    .tab.active { 
+      color: #00d4ff; 
+      border-bottom: 2px solid #00d4ff;
+      background: rgba(0, 212, 255, 0.1);
+    }
+    
+    /* タブコンテンツ */
+    .tab-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 15px;
+    }
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+    
+    /* 画像表示 */
+    .image-display {
+      background: #0a0a15;
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 15px;
+      text-align: center;
+    }
+    .image-display img {
+      max-width: 100%;
+      max-height: 250px;
+      border-radius: 4px;
+    }
+    .image-display .no-image {
+      color: #444;
+      padding: 40px;
+    }
+    .image-filename {
+      font-size: 0.75rem;
+      color: #666;
+      margin-top: 8px;
+    }
+    
+    /* アップロードボタン */
+    .upload-area {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .upload-btn {
+      flex: 1;
+      min-width: 120px;
+      padding: 10px;
+      background: #0a0a15;
+      border: 1px dashed #444;
+      border-radius: 6px;
+      color: #888;
+      cursor: pointer;
+      font-size: 0.8rem;
+      transition: all 0.2s;
+    }
+    .upload-btn:hover {
+      border-color: #00d4ff;
+      color: #00d4ff;
+    }
+    input[type="file"] { display: none; }
+    
+    /* フォーム */
+    .form-group {
+      margin-bottom: 15px;
+    }
+    .form-group label {
+      display: block;
+      font-size: 0.8rem;
+      color: #888;
+      margin-bottom: 5px;
+    }
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      padding: 10px;
+      background: #0a0a15;
+      border: 1px solid #333;
+      border-radius: 6px;
+      color: #eee;
+      font-size: 0.9rem;
+    }
+    .form-group textarea {
+      min-height: 100px;
+      resize: vertical;
+    }
+    .form-group select { cursor: pointer; }
+    
+    /* 判定スタイル */
+    select.judgment-healthy { background: #1a3d1a; border-color: #27ae60; }
+    select.judgment-observe { background: #3d3d1a; border-color: #f39c12; }
+    select.judgment-floating { background: #3d1a1a; border-color: #e74c3c; }
+    
+    /* GSD表示 */
+    .gsd-display {
+      background: #0a0a15;
+      padding: 10px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      margin-bottom: 15px;
+    }
+    .gsd-display strong { color: #00d4ff; }
+    
+    /* ボタン */
+    .btn {
+      padding: 12px 20px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: all 0.2s;
+    }
+    .btn-primary { background: #00d4ff; color: #000; }
+    .btn-primary:hover { background: #00a8cc; }
+    .btn-danger { background: #e74c3c; color: #fff; }
+    .btn-danger:hover { background: #c0392b; }
+    .btn-success { background: #27ae60; color: #fff; }
+    .btn-success:hover { background: #1e8449; }
+    .btn-export {
+      width: 100%;
+      padding: 15px;
+      background: #00cc66;
+      color: #fff;
+      font-size: 1rem;
+      font-weight: bold;
+      margin-top: 15px;
+    }
+    .btn-export:hover { background: #00aa55; }
+    
+    .btn-group {
+      display: flex;
+      gap: 10px;
+      margin-top: 15px;
+    }
+    .btn-group .btn { flex: 1; }
+    
+    /* トリミングリスト */
+    .crop-list {
+      margin-top: 15px;
+    }
+    .crop-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px;
+      background: #0a0a15;
+      border-radius: 6px;
+      margin-bottom: 8px;
+    }
+    .crop-item img {
+      width: 60px;
+      height: 45px;
+      object-fit: cover;
+      border-radius: 4px;
+    }
+    .crop-item span { flex: 1; font-size: 0.8rem; }
+    .crop-item button {
+      background: #c00;
+      border: none;
+      color: #fff;
+      padding: 4px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.75rem;
+    }
+    
+    /* ローディング */
+    .loading {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: #1a1a2e;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    .loading-spinner {
+      width: 50px;
+      height: 50px;
+      border: 3px solid #333;
+      border-top-color: #00d4ff;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    /* レスポンシブ */
+    @media (max-width: 900px) {
+      .main-container { flex-direction: column; }
+      .detail-panel { 
+        width: 100%; 
+        height: 50vh;
+        border-left: none;
+        border-top: 1px solid #00d4ff33;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+
+  <script>
+    // Firebase設定
+    const firebaseConfig = {
+      apiKey: "AIzaSyAiJ-c45y9PE5wfCKFUFunTEqwFRsE5_1I",
+      authDomain: "infrared-cameramera.firebaseapp.com",
+      projectId: "infrared-cameramera",
+      storageBucket: "infrared-cameramera.firebasestorage.app",
+      messagingSenderId: "475644542906",
+      appId: "1:475644542906:web:d26d9df6bc0c5a1fe6e783"
+    };
+
+    // Firebase初期化
+    if (!firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+    }
+    const storage = firebase.storage();
+    const db = firebase.firestore();
+
+    // アプリ状態
+    const state = {
+      loading: true,
+      drawings: [],
+      currentDrawingId: null,
+      pins: [],
+      selectedPinId: null,
+      activeTab: 'visible',
+      distance: 8
+    };
+
+    // DOM要素取得
+    const app = document.getElementById('app');
+
+    // レンダリング
+    function render() {
+      const currentDrawing = state.drawings.find(d => d.id === state.currentDrawingId);
+      const currentPins = state.pins.filter(p => p.drawingId === state.currentDrawingId);
+      const selectedPin = state.pins.find(p => p.id === state.selectedPinId);
+
+      if (state.loading) {
+        app.innerHTML = `
+          <div class="loading">
+            <div class="loading-spinner"></div>
+          </div>
+        `;
+        return;
+      }
+
+      app.innerHTML = `
+        <div class="header">
+          <h1>🔥 橋梁赤外線解析システム</h1>
+          <div class="drawing-tabs">
+            ${state.drawings.map(d => `
+              <div class="drawing-tab ${d.id === state.currentDrawingId ? 'active' : ''}" 
+                   onclick="switchDrawing('${d.id}')">
+                ${d.name}
+                <span class="delete-drawing" onclick="event.stopPropagation(); deleteDrawing('${d.id}')">×</span>
+              </div>
+            `).join('')}
+            <div class="drawing-tab add" onclick="addDrawing()">＋ 図面追加</div>
+          </div>
+        </div>
+        
+        <div class="main-container">
+          <div class="drawing-area" onclick="handleDrawingClick(event)">
+            ${currentDrawing ? `
+              <div class="drawing-wrapper" id="drawingWrapper">
+                <img src="${currentDrawing.url}" class="drawing-image" id="drawingImage" draggable="false">
+                ${currentPins.map((pin, i) => `
+                  <div class="pin ${pin.judgment || 'unanalyzed'} ${pin.id === state.selectedPinId ? 'selected' : ''}"
+                       style="left: ${pin.x}%; top: ${pin.y}%;"
+                       onclick="event.stopPropagation(); selectPin('${pin.id}')">
+                    <span class="pin-number">${pin.name || (i + 1)}</span>
+                  </div>
+                `).join('')}
+              </div>
+              <div class="instructions">
+                💡 クリックでピン追加 | ピンクリックで詳細表示
+              </div>
+            ` : `
+              <div class="empty-state">
+                図面を追加してください
+              </div>
+            `}
+          </div>
+          
+          ${selectedPin ? `
+            <div class="detail-panel">
+              <div class="panel-header">
+                <h2>📍 ${selectedPin.name || 'ピン ' + (currentPins.findIndex(p => p.id === selectedPin.id) + 1)}</h2>
+                <button class="close-panel" onclick="closePanel()">×</button>
+              </div>
+              
+              <div class="tabs">
+                <button class="tab ${state.activeTab === 'visible' ? 'active' : ''}" onclick="setTab('visible')">可視</button>
+                <button class="tab ${state.activeTab === 'infrared' ? 'active' : ''}" onclick="setTab('infrared')">赤外線</button>
+                <button class="tab ${state.activeTab === 'color8' ? 'active' : ''}" onclick="setTab('color8')">8色</button>
+                <button class="tab ${state.activeTab === 'analysis' ? 'active' : ''}" onclick="setTab('analysis')">解析</button>
+              </div>
+              
+              <div class="tab-content">
+                <!-- 可視画像タブ -->
+                <div class="tab-pane ${state.activeTab === 'visible' ? 'active' : ''}">
+                  <div class="image-display">
+                    ${selectedPin.images?.visible ? `
+                      <img src="${selectedPin.images.visible.url}" alt="可視画像">
+                      <div class="image-filename">${selectedPin.images.visible.filename}</div>
+                    ` : `<div class="no-image">画像なし</div>`}
+                  </div>
+                  <div class="upload-area">
+                    <label class="upload-btn">
+                      📷 可視画像をアップロード
+                      <input type="file" accept="image/*" onchange="uploadImage('visible', this.files[0])">
+                    </label>
+                  </div>
+                </div>
+                
+                <!-- 赤外線画像タブ -->
+                <div class="tab-pane ${state.activeTab === 'infrared' ? 'active' : ''}">
+                  <div class="image-display">
+                    ${selectedPin.images?.infrared ? `
+                      <img src="${selectedPin.images.infrared.url}" alt="赤外線画像">
+                      <div class="image-filename">${selectedPin.images.infrared.filename}</div>
+                    ` : `<div class="no-image">画像なし</div>`}
+                  </div>
+                  <div class="upload-area">
+                    <label class="upload-btn">
+                      🔥 赤外線画像をアップロード
+                      <input type="file" accept="image/*" onchange="uploadImage('infrared', this.files[0])">
+                    </label>
+                  </div>
+                </div>
+                
+                <!-- 8色画像タブ -->
+                <div class="tab-pane ${state.activeTab === 'color8' ? 'active' : ''}">
+                  <div class="image-display">
+                    ${selectedPin.images?.color8 ? `
+                      <img src="${selectedPin.images.color8.url}" alt="8色画像">
+                      <div class="image-filename">${selectedPin.images.color8.filename}</div>
+                    ` : `<div class="no-image">画像なし</div>`}
+                  </div>
+                  <div class="upload-area">
+                    <label class="upload-btn">
+                      🎨 8色画像をアップロード
+                      <input type="file" accept="image/*" onchange="uploadImage('color8', this.files[0])">
+                    </label>
+                  </div>
+                </div>
+                
+                <!-- 解析タブ -->
+                <div class="tab-pane ${state.activeTab === 'analysis' ? 'active' : ''}">
+                  <div class="form-group">
+                    <label>ピン名 / 写真番号</label>
+                    <input type="text" id="pinName" value="${selectedPin.name || ''}" 
+                           placeholder="例: T00484" onchange="updatePinName(this.value)">
+                  </div>
+                  
+                  <div class="form-group">
+                    <label>撮影距離 (m)</label>
+                    <input type="number" id="distance" value="${selectedPin.distance || state.distance}" 
+                           step="0.5" onchange="updateDistance(this.value)">
+                  </div>
+                  
+                  <div class="gsd-display">
+                    <strong>GSD:</strong> <span id="gsdValue">${calcGSD(selectedPin.distance || state.distance)}</span> mm/px
+                  </div>
+                  
+                  <div class="form-group">
+                    <label>判定</label>
+                    <select id="judgment" class="judgment-${selectedPin.judgment || 'unanalyzed'}"
+                            onchange="updateJudgment(this.value)">
+                      <option value="" ${!selectedPin.judgment ? 'selected' : ''}>未判定</option>
+                      <option value="healthy" ${selectedPin.judgment === 'healthy' ? 'selected' : ''}>健全部</option>
+                      <option value="observe" ${selectedPin.judgment === 'observe' ? 'selected' : ''}>観察</option>
+                      <option value="floating" ${selectedPin.judgment === 'floating' ? 'selected' : ''}>浮きの可能性あり</option>
+                    </select>
+                  </div>
+                  
+                  <div class="form-group">
+                    <label>判定フロー</label>
+                    <select id="judgmentFlow" onchange="updateJudgmentFlow(this.value)">
+                      <option value="flow1" ${selectedPin.judgmentFlow === 'flow1' ? 'selected' : ''}>第一条件：統計値ベース（σ基準）</option>
+                      <option value="flow2" ${(selectedPin.judgmentFlow === 'flow2' || !selectedPin.judgmentFlow) ? 'selected' : ''}>第二条件：局所レンジ方式（Max-Min）</option>
+                      <option value="flow3" ${selectedPin.judgmentFlow === 'flow3' ? 'selected' : ''}>第三条件：試験体基準（参考）</option>
+                    </select>
+                  </div>
+                  
+                  <div class="form-group">
+                    <label>解析コメント</label>
+                    <textarea id="comment" placeholder="解析結果を入力..."
+                              onchange="updateComment(this.value)">${selectedPin.comment || ''}</textarea>
+                  </div>
+                  
+                  <div class="form-group">
+                    <label>追加コメント</label>
+                    <textarea id="additionalComment" placeholder="追加の所見があれば..."
+                              onchange="updateAdditionalComment(this.value)">${selectedPin.additionalComment || ''}</textarea>
+                  </div>
+                  
+                  <button class="btn btn-primary" style="width:100%; margin-bottom:10px;" 
+                          onclick="generateComment()">
+                    ✨ コメント自動生成
+                  </button>
+                  
+                  <button class="btn btn-export" onclick="exportReport()">
+                    📄 レポートを出力
+                  </button>
+                  
+                  <div class="btn-group">
+                    <button class="btn btn-danger" onclick="deletePin()">🗑️ ピン削除</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }
+
+    // GSD計算
+    function calcGSD(distance) {
+      const fovH = 24;
+      const resH = 480;
+      const W = 2 * distance * Math.tan((fovH / 2) * Math.PI / 180);
+      return (W / resH * 1000).toFixed(1);
+    }
+
+    // 初期データ読み込み
+    async function loadData() {
+      try {
+        const drawingsSnapshot = await db.collection('drawings').get();
+        state.drawings = drawingsSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+
+        if (state.drawings.length > 0) {
+          state.currentDrawingId = state.drawings[0].id;
+          await loadPins(state.drawings[0].id);
+        }
+      } catch (error) {
+        console.error('データ読み込みエラー:', error);
+      }
+      state.loading = false;
+      render();
+    }
+
+    // ピン読み込み
+    async function loadPins(drawingId) {
+      try {
+        const pinsSnapshot = await db.collection('pins')
+          .where('drawingId', '==', drawingId)
+          .get();
+        state.pins = pinsSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+      } catch (error) {
+        console.error('ピン読み込みエラー:', error);
+      }
+    }
+
+    // 図面切り替え
+    async function switchDrawing(drawingId) {
+      state.currentDrawingId = drawingId;
+      state.selectedPinId = null;
+      await loadPins(drawingId);
+      render();
+    }
+
+    // 図面追加
+    async function addDrawing() {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.onchange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        state.loading = true;
+        render();
+
+        try {
+          const filename = `${Date.now()}_${file.name}`;
+          const ref = storage.ref().child(`drawings/${filename}`);
+          await ref.put(file);
+          const url = await ref.getDownloadURL();
+
+          const docRef = await db.collection('drawings').add({
+            name: file.name,
+            url: url,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+
+          state.drawings.push({ id: docRef.id, name: file.name, url: url });
+          state.currentDrawingId = docRef.id;
+        } catch (error) {
+          console.error('図面追加エラー:', error);
+          alert('図面の追加に失敗しました');
+        }
+
+        state.loading = false;
+        render();
+      };
+      input.click();
+    }
+
+    // 図面削除
+    async function deleteDrawing(drawingId) {
+      if (!confirm('この図面を削除しますか？関連するピンも削除されます。')) return;
+
+      state.loading = true;
+      render();
+
+      try {
+        const pinsSnapshot = await db.collection('pins')
+          .where('drawingId', '==', drawingId)
+          .get();
+        
+        for (const doc of pinsSnapshot.docs) {
+          await db.collection('pins').doc(doc.id).delete();
+        }
+
+        await db.collection('drawings').doc(drawingId).delete();
+
+        state.drawings = state.drawings.filter(d => d.id !== drawingId);
+        state.pins = state.pins.filter(p => p.drawingId !== drawingId);
+        
+        if (state.currentDrawingId === drawingId) {
+          state.currentDrawingId = state.drawings.length > 0 ? state.drawings[0].id : null;
+          state.selectedPinId = null;
+          if (state.currentDrawingId) {
+            await loadPins(state.currentDrawingId);
+          }
+        }
+      } catch (error) {
+        console.error('図面削除エラー:', error);
+        alert('図面の削除に失敗しました');
+      }
+
+      state.loading = false;
+      render();
+    }
+
+    // 図面クリック（ピン追加）
+    async function handleDrawingClick(e) {
+      const wrapper = document.getElementById('drawingWrapper');
+      if (!wrapper || !state.currentDrawingId) return;
+      
+      // ピンクリックは除外
+      if (e.target.closest('.pin')) return;
+
+      const rect = wrapper.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width) * 100;
+      const y = ((e.clientY - rect.top) / rect.height) * 100;
+
+      try {
+        const newPin = {
+          drawingId: state.currentDrawingId,
+          x: x,
+          y: y,
+          images: {},
+          judgment: null,
+          judgmentFlow: 'flow2',
+          comment: '',
+          additionalComment: '',
+          distance: state.distance,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+
+        const docRef = await db.collection('pins').add(newPin);
+        state.pins.push({ id: docRef.id, ...newPin });
+        state.selectedPinId = docRef.id;
+        state.activeTab = 'analysis';
+        render();
+      } catch (error) {
+        console.error('ピン追加エラー:', error);
+      }
+    }
+
+    // ピン選択
+    function selectPin(pinId) {
+      state.selectedPinId = pinId;
+      render();
+    }
+
+    // パネルを閉じる
+    function closePanel() {
+      state.selectedPinId = null;
+      render();
+    }
+
+    // タブ切り替え
+    function setTab(tab) {
+      state.activeTab = tab;
+      render();
+    }
+
+    // 画像アップロード
+    async function uploadImage(type, file) {
+      if (!file || !state.selectedPinId) return;
+
+      const pin = state.pins.find(p => p.id === state.selectedPinId);
+      if (!pin) return;
+
+      try {
+        const filename = `${Date.now()}_${file.name}`;
+        const ref = storage.ref().child(`pins/${state.selectedPinId}/${type}/${filename}`);
+        await ref.put(file);
+        const url = await ref.getDownloadURL();
+
+        await db.collection('pins').doc(state.selectedPinId).update({
+          [`images.${type}`]: { url: url, filename: file.name }
+        });
+
+        pin.images = pin.images || {};
+        pin.images[type] = { url: url, filename: file.name };
+        
+        render();
+        alert('アップロード完了');
+      } catch (error) {
+        console.error('アップロードエラー:', error);
+        alert('アップロードに失敗しました');
+      }
+    }
+
+    // ピン名更新
+    async function updatePinName(value) {
+      if (!state.selectedPinId) return;
+      const pin = state.pins.find(p => p.id === state.selectedPinId);
+      if (pin) {
+        pin.name = value;
+        await db.collection('pins').doc(state.selectedPinId).update({ name: value });
+      }
+    }
+
+    // 撮影距離更新
+    async function updateDistance(value) {
+      if (!state.selectedPinId) return;
+      const distance = parseFloat(value) || 8;
+      state.distance = distance;
+      const pin = state.pins.find(p => p.id === state.selectedPinId);
+      if (pin) {
+        pin.distance = distance;
+        await db.collection('pins').doc(state.selectedPinId).update({ distance: distance });
+        document.getElementById('gsdValue').textContent = calcGSD(distance);
+      }
+    }
+
+    // 判定更新
+    async function updateJudgment(value) {
+      if (!state.selectedPinId) return;
+      const pin = state.pins.find(p => p.id === state.selectedPinId);
+      if (pin) {
+        pin.judgment = value || null;
+        await db.collection('pins').doc(state.selectedPinId).update({ judgment: value || null });
+        render();
+      }
+    }
+
+    // 判定フロー更新
+    async function updateJudgmentFlow(value) {
+      if (!state.selectedPinId) return;
+      const pin = state.pins.find(p => p.id === state.selectedPinId);
+      if (pin) {
+        pin.judgmentFlow = value;
+        await db.collection('pins').doc(state.selectedPinId).update({ judgmentFlow: value });
+      }
+    }
+
+    // コメント更新
+    async function updateComment(value) {
+      if (!state.selectedPinId) return;
+      const pin = state.pins.find(p => p.id === state.selectedPinId);
+      if (pin) {
+        pin.comment = value;
+        await db.collection('pins').doc(state.selectedPinId).update({ comment: value });
+      }
+    }
+
+    // 追加コメント更新
+    async function updateAdditionalComment(value) {
+      if (!state.selectedPinId) return;
+      const pin = state.pins.find(p => p.id === state.selectedPinId);
+      if (pin) {
+        pin.additionalComment = value;
+        await db.collection('pins').doc(state.selectedPinId).update({ additionalComment: value });
+      }
+    }
+
+    // コメント自動生成
+    function generateComment() {
+      const pin = state.pins.find(p => p.id === state.selectedPinId);
+      if (!pin) return;
+
+      const judgment = pin.judgment || '';
+      const flow = pin.judgmentFlow || 'flow2';
+
+      const flowTexts = {
+        flow1: '第一条件（統計値ベース：σ基準）を適用。',
+        flow2: '第二条件（局所レンジ方式：Max-Min）を適用。',
+        flow3: '第三条件（試験体基準）を参考として適用。'
+      };
+
+      const templates = {
+        healthy: {
+          flow1: `${flowTexts.flow1}\n健全部の温度ばらつき（σ）に対し、2σを超える温度差は認められない。浮き・剥離を示す局所的な温度異常（明瞭な境界を持つ中心ピーク）は確認されない。\n\n結論：健全と判断する。`,
+          flow2: `${flowTexts.flow2}\n対象領域のMax-Minをフルレンジとして解析。8階調表示において2目盛り以上の温度差を示す異常部は認められない。\n\n結論：健全と判断する。`,
+          flow3: `${flowTexts.flow3}\n試験体の温度レンジと比較し、浮きを示す温度差は確認されない。\n\n結論：健全と判断する。`
+        },
+        observe: {
+          flow1: `${flowTexts.flow1}\nΔT=○℃程度の温度差を確認。2σに近い値を示すが、境界がやや不明瞭であり、浮きと断定できない。\n\n結論：経過観察を推奨する。`,
+          flow2: `${flowTexts.flow2}\n対象領域のMax-Minをフルレンジとして解析。8階調表示において2目盛り程度の温度差を確認するが、境界が不明瞭。\n\n結論：経過観察を推奨する。`,
+          flow3: `${flowTexts.flow3}\n試験体の温度レンジと比較し、やや温度差が認められるが明確な判定には至らない。\n\n結論：経過観察を推奨する。`
+        },
+        floating: {
+          flow1: `${flowTexts.flow1}\nΔT=○℃の高温部を確認。健全部のσに対し2σ以上の温度差があり、周囲との温度境界が明瞭である。\n\n結論：浮きの可能性ありと判断する。`,
+          flow2: `${flowTexts.flow2}\n対象領域のMax-Minをフルレンジとして解析。8階調表示において2目盛り以上の明瞭な温度差を確認。境界が明瞭であり、浮きの特徴を示す。\n\n結論：浮きの可能性ありと判断する。`,
+          flow3: `${flowTexts.flow3}\n試験体の温度レンジと比較し、浮きを示す温度差パターンを確認。\n\n結論：浮きの可能性ありと判断する。`
+        }
+      };
+
+      let comment = '';
+      if (judgment && templates[judgment]) {
+        comment = templates[judgment][flow] || '';
+      } else {
+        comment = '判定を選択してください。';
+      }
+
+      pin.comment = comment;
+      db.collection('pins').doc(state.selectedPinId).update({ comment: comment });
+      render();
+    }
+
+    // ピン削除
+    async function deletePin() {
+      if (!state.selectedPinId || !confirm('このピンを削除しますか？')) return;
+
+      try {
+        await db.collection('pins').doc(state.selectedPinId).delete();
+        state.pins = state.pins.filter(p => p.id !== state.selectedPinId);
+        state.selectedPinId = null;
+        render();
+      } catch (error) {
+        console.error('ピン削除エラー:', error);
+      }
+    }
+
+    // レポート出力（仮）
+    function exportReport() {
+      const pin = state.pins.find(p => p.id === state.selectedPinId);
+      if (!pin) return;
+
+      alert(`レポート出力機能は次のステップで実装します。\n\nピン: ${pin.name || 'No Name'}\n判定: ${pin.judgment || '未判定'}`);
+    }
+
+    // 初期化
+    loadData();
+  </script>
+</body>
+</html>
