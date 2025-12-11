@@ -1011,6 +1011,21 @@
           id: doc.id,
           ...doc.data()
         }));
+        
+        // 中根高架橋の場合、projectIdがない既存図面も読み込む
+        if (projectId === 'proj_nakane') {
+          const oldDrawingsSnapshot = await db.collection('drawings').get();
+          for (const doc of oldDrawingsSnapshot.docs) {
+            const data = doc.data();
+            if (!data.projectId) {
+              // 既存データに projectId を付与
+              await db.collection('drawings').doc(doc.id).update({ projectId: 'proj_nakane' });
+              if (!state.drawings.find(d => d.id === doc.id)) {
+                state.drawings.push({ id: doc.id, ...data, projectId: 'proj_nakane' });
+              }
+            }
+          }
+        }
 
         // 最初の図面を選択してピンを読み込み
         if (state.drawings.length > 0) {
