@@ -561,6 +561,44 @@
         border-top: 1px solid #00d4ff33;
       }
     }
+    
+    /* プロジェクト選択 */
+    .project-selector {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-right: 15px;
+    }
+    .project-selector label {
+      color: #888;
+      font-size: 0.85rem;
+    }
+    .project-selector select {
+      padding: 8px 12px;
+      background: #0a0a15;
+      border: 1px solid #00d4ff55;
+      border-radius: 6px;
+      color: #00d4ff;
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
+    .project-selector select:focus {
+      outline: none;
+      border-color: #00d4ff;
+    }
+    .btn-add-project {
+      padding: 8px 12px;
+      background: transparent;
+      border: 1px dashed #555;
+      border-radius: 6px;
+      color: #888;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+    .btn-add-project:hover {
+      border-color: #00d4ff;
+      color: #00d4ff;
+    }
   </style>
 </head>
 <body>
@@ -601,6 +639,8 @@
     // アプリ状態
     const state = {
       loading: true,
+      projects: [],
+      currentProjectId: null,
       drawings: [],
       currentDrawingId: null,
       pins: [],
@@ -612,14 +652,26 @@
       isDrawingArea: false,
       tempArea: null,
       showPdfModal: false,
-      selectedPinsForExport: []
+      selectedPinsForExport: [],
+      showProjectModal: false
     };
+    
+    // 初期プロジェクト
+    const defaultProjects = [
+      { id: 'proj_nakane', name: '中根高架橋' },
+      { id: 'proj_dominica', name: 'ドミニカ高架橋' },
+      { id: 'proj_indus', name: 'インダス川橋' },
+      { id: 'proj_megane', name: '眼鏡橋' },
+      { id: 'proj_hoshifuri', name: '星降り大橋' }
+    ];
 
     // DOM要素取得
     const app = document.getElementById('app');
 
     // レンダリング
     function render() {
+      const currentProject = state.projects.find(p => p.id === state.currentProjectId);
+      const currentDrawings = state.drawings.filter(d => d.projectId === state.currentProjectId);
       const currentDrawing = state.drawings.find(d => d.id === state.currentDrawingId);
       const currentPins = state.pins.filter(p => p.drawingId === state.currentDrawingId);
       const selectedPin = state.pins.find(p => p.id === state.selectedPinId);
@@ -637,9 +689,18 @@
         <div class="header">
           <h1>🔥 橋梁赤外線解析システム</h1>
           <div class="header-actions">
+            <div class="project-selector">
+              <label>🏗️ プロジェクト:</label>
+              <select onchange="switchProject(this.value)">
+                ${state.projects.map(p => `
+                  <option value="${p.id}" ${p.id === state.currentProjectId ? 'selected' : ''}>${p.name}</option>
+                `).join('')}
+              </select>
+              <button class="btn-add-project" onclick="addProject()">＋</button>
+            </div>
             <button class="btn-pdf-export" onclick="openPdfExportModal()">📄 PDFエクスポート</button>
             <div class="drawing-tabs">
-              ${state.drawings.map(d => `
+              ${currentDrawings.map(d => `
                 <div class="drawing-tab ${d.id === state.currentDrawingId ? 'active' : ''}" 
                      onclick="switchDrawing('${d.id}')">
                   ${d.name}
@@ -912,21 +973,58 @@
     // 初期データ読み込み
     async function loadData() {
       try {
-        const drawingsSnapshot = await db.collection('drawings').get();
-        state.drawings = drawingsSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-
-        if (state.drawings.length > 0) {
-          state.currentDrawingId = state.drawings[0].id;
-          await loadPins(state.drawings[0].id);
+        // プロジェクト読み込み
+        const projectsSnapshot = await db.collection('projects').get();
+        if (projectsSnapshot.empty) {
+          // 初期プロジェクトを作成
+          for (const proj of defaultProjects) {
+            await db.collection('projects').doc(proj.id).set({ name: proj.name });
+          }
+          state.projects = [...defaultProjects];
+        } else {
+          state.projects = projectsSnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          }));
+        }
+        
+        // 最初のプロジェクトを選択
+        if (state.projects.length > 0) {
+          state.currentProjectId = state.projects[0].id;
+          await loadProjectData(state.currentProjectId);
         }
       } catch (error) {
         console.error('データ読み込みエラー:', error);
       }
       state.loading = false;
       render();
+    }
+
+    // プロジェクトのデータを読み込み
+    async function loadProjectData(projectId) {
+      try {
+        // 図面読み込み（プロジェクトに紐づくもののみ）
+        const drawingsSnapshot = await db.collection('drawings')
+          .where('projectId', '==', projectId)
+          .get();
+        state.drawings = drawingsSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+
+        // 最初の図面を選択してピンを読み込み
+        if (state.drawings.length > 0) {
+          state.currentDrawingId = state.drawings[0].id;
+          await loadPins(state.drawings[0].id);
+        } else {
+          state.currentDrawingId = null;
+          state.pins = [];
+        }
+        
+        state.selectedPinId = null;
+      } catch (error) {
+        console.error('プロジェクトデータ読み込みエラー:', error);
+      }
     }
 
     // ピン読み込み
@@ -944,6 +1042,35 @@
       }
     }
 
+    // プロジェクト切り替え
+    async function switchProject(projectId) {
+      state.currentProjectId = projectId;
+      state.loading = true;
+      render();
+      await loadProjectData(projectId);
+      state.loading = false;
+      render();
+    }
+
+    // プロジェクト追加
+    async function addProject() {
+      const name = prompt('新しいプロジェクト名を入力してください:');
+      if (!name) return;
+      
+      try {
+        const docRef = await db.collection('projects').add({ name: name });
+        state.projects.push({ id: docRef.id, name: name });
+        state.currentProjectId = docRef.id;
+        state.drawings = [];
+        state.pins = [];
+        state.currentDrawingId = null;
+        state.selectedPinId = null;
+        render();
+      } catch (error) {
+        console.error('プロジェクト追加エラー:', error);
+      }
+    }
+
     // 図面切り替え
     async function switchDrawing(drawingId) {
       state.currentDrawingId = drawingId;
@@ -954,6 +1081,11 @@
 
     // 図面追加
     async function addDrawing() {
+      if (!state.currentProjectId) {
+        alert('プロジェクトを選択してください');
+        return;
+      }
+      
       const input = document.createElement('input');
       input.type = 'file';
       input.accept = 'image/*';
@@ -973,10 +1105,11 @@
           const docRef = await db.collection('drawings').add({
             name: file.name,
             url: url,
+            projectId: state.currentProjectId,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
           });
 
-          state.drawings.push({ id: docRef.id, name: file.name, url: url });
+          state.drawings.push({ id: docRef.id, name: file.name, url: url, projectId: state.currentProjectId });
           state.currentDrawingId = docRef.id;
         } catch (error) {
           console.error('図面追加エラー:', error);
@@ -1749,6 +1882,8 @@
     loadData();
     
     // グローバルに関数を公開（HTMLのonclickから呼べるように）
+    window.switchProject = switchProject;
+    window.addProject = addProject;
     window.switchDrawing = switchDrawing;
     window.addDrawing = addDrawing;
     window.deleteDrawing = deleteDrawing;
