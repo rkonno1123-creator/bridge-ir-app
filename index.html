@@ -476,7 +476,6 @@
                 ${currentPins.map((pin, i) => `
                   <div class="pin ${pin.judgment || 'unanalyzed'} ${pin.id === state.selectedPinId ? 'selected' : ''}"
                        style="left: ${pin.x}%; top: ${pin.y}%;"
-                       onclick="event.stopPropagation(); selectPin('${pin.id}')"
                        onmousedown="handlePinMouseDown(event, '${pin.id}')">
                     <span class="pin-number">${(pin.name || String(i + 1)).slice(-3)}</span>
                   </div>
@@ -954,12 +953,16 @@
       }
     }
 
-    // ピン移動開始（Shift+クリック）
+    // ピンクリック/移動開始
     function handlePinMouseDown(e, pinId) {
+      e.stopPropagation();
       if (e.shiftKey) {
-        e.stopPropagation();
+        // Shift+クリック = 移動モード
         e.preventDefault();
         state.draggingPin = pinId;
+      } else {
+        // 通常クリック = 詳細表示
+        selectPin(pinId);
       }
     }
 
