@@ -1085,6 +1085,31 @@
 
     // 初期化
     loadData();
+    
+    // グローバルに関数を公開（HTMLのonclickから呼べるように）
+    window.switchDrawing = switchDrawing;
+    window.addDrawing = addDrawing;
+    window.deleteDrawing = deleteDrawing;
+    window.handleDrawingClick = handleDrawingClick;
+    window.selectPin = selectPin;
+    window.closePanel = closePanel;
+    window.setTab = setTab;
+    window.uploadImage = uploadImage;
+    window.updatePinName = updatePinName;
+    window.updateDistance = updateDistance;
+    window.updateJudgment = updateJudgment;
+    window.updateJudgmentFlow = updateJudgmentFlow;
+    window.updateComment = updateComment;
+    window.updateAdditionalComment = updateAdditionalComment;
+    window.generateComment = generateComment;
+    window.deletePin = deletePin;
+    window.exportReport = exportReport;
+    window.toggleEditMode = toggleEditMode;
+    window.handlePinMouseDown = handlePinMouseDown;
+    window.handlePinDrag = handlePinDrag;
+    window.handlePinDragEnd = handlePinDragEnd;
+    window.handlePinTouchStart = handlePinTouchStart;
+    window.handleTouchDrag = handleTouchDrag;
     }); // waitForFirebase end
   </script>
 </body>
