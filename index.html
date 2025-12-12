@@ -252,6 +252,42 @@
       border-radius: 4px;
       border-left: 3px solid #f39c12;
     }
+    .temp-range-inputs {
+      display: flex;
+      gap: 15px;
+      margin: 12px 0;
+    }
+    .temp-input-group {
+      flex: 1;
+    }
+    .temp-input-group label {
+      display: block;
+      font-size: 0.75rem;
+      color: #888;
+      margin-bottom: 4px;
+    }
+    .temp-input-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .temp-input-wrapper input {
+      flex: 1;
+      padding: 8px;
+      background: #0a0a15;
+      border: 1px solid #333;
+      border-radius: 4px;
+      color: #fff;
+      font-size: 1rem;
+    }
+    .temp-input-wrapper input:focus {
+      outline: none;
+      border-color: #00d4ff;
+    }
+    .temp-unit {
+      color: #888;
+      font-size: 0.9rem;
+    }
     
     /* アップロードボタン */
     .upload-area {
@@ -894,6 +930,24 @@
                       <div class="image-caption">※ 白枠内が施工箇所です</div>
                     ` : `<div class="no-image">画像なし</div>`}
                   </div>
+                  <div class="temp-range-inputs">
+                    <div class="temp-input-group">
+                      <label>温度レンジ Max</label>
+                      <div class="temp-input-wrapper">
+                        <input type="number" step="0.1" value="${selectedPin.tempMax || ''}" 
+                               placeholder="17.3" onchange="updateTempRange('tempMax', this.value)">
+                        <span class="temp-unit">℃</span>
+                      </div>
+                    </div>
+                    <div class="temp-input-group">
+                      <label>温度レンジ Min</label>
+                      <div class="temp-input-wrapper">
+                        <input type="number" step="0.1" value="${selectedPin.tempMin || ''}" 
+                               placeholder="14.0" onchange="updateTempRange('tempMin', this.value)">
+                        <span class="temp-unit">℃</span>
+                      </div>
+                    </div>
+                  </div>
                   <div class="upload-area">
                     <label class="upload-btn">
                       🎨 8色画像をアップロード
@@ -1364,6 +1418,17 @@
       }
     }
 
+    // 温度レンジ更新
+    async function updateTempRange(field, value) {
+      if (!state.selectedPinId) return;
+      const pin = state.pins.find(p => p.id === state.selectedPinId);
+      if (pin) {
+        const temp = value ? parseFloat(value) : null;
+        pin[field] = temp;
+        await db.collection('pins').doc(state.selectedPinId).update({ [field]: temp });
+      }
+    }
+
     // 判定更新
     async function updateJudgment(value) {
       if (!state.selectedPinId) return;
@@ -1772,30 +1837,29 @@
             body { font-family: 'Meiryo', sans-serif; font-size: 11px; }
             .page { 
               page-break-after: always; 
-              padding: 10mm;
-              max-height: 277mm;
+              padding: 8mm;
             }
             .page:last-child { page-break-after: auto; }
             .header { 
               font-size: 14px; 
               font-weight: bold;
               border-bottom: 2px solid #333; 
-              padding-bottom: 5px;
-              margin-bottom: 8px;
+              padding-bottom: 4px;
+              margin-bottom: 6px;
             }
             .info-table { 
               width: 100%; 
               border-collapse: collapse; 
-              margin-bottom: 8px;
+              margin-bottom: 6px;
             }
             .info-table td { 
-              padding: 4px 8px; 
+              padding: 3px 6px; 
               border: 1px solid #ccc;
               vertical-align: middle;
             }
             .info-table td:first-child { 
               background: #f0f0f0; 
-              width: 150px; 
+              width: 130px; 
               font-weight: bold;
               white-space: nowrap;
             }
@@ -1809,45 +1873,83 @@
             .judgment.observe { background: #fff3cd; color: #856404; }
             .judgment.floating { background: #f8d7da; color: #721c24; }
             .section-title {
-              font-size: 12px;
+              font-size: 11px;
               font-weight: bold;
-              margin: 8px 0 5px 0;
+              margin: 6px 0 4px 0;
               color: #333;
             }
-            .images { 
+            .image-row { 
               display: flex; 
-              gap: 10px; 
-              margin-bottom: 8px;
+              gap: 8px; 
+              margin-bottom: 6px;
+              align-items: flex-start;
             }
-            .images .img-box {
+            .img-box {
               text-align: center;
             }
-            .images .img-box p {
-              font-size: 10px;
-              margin-bottom: 3px;
+            .img-box p {
+              font-size: 9px;
+              margin-bottom: 2px;
               color: #666;
             }
-            .images img { 
-              max-width: 180px; 
-              max-height: 120px; 
+            .img-box img { 
+              max-width: 250px; 
+              max-height: 160px; 
               border: 1px solid #ddd;
+            }
+            .color8-container {
+              display: flex;
+              gap: 10px;
+              align-items: flex-start;
+            }
+            .temp-range-box {
+              background: #f5f5f5;
+              border: 1px solid #ddd;
+              border-radius: 4px;
+              padding: 8px 12px;
+              font-size: 11px;
+            }
+            .temp-range-box .label {
+              color: #666;
+              font-size: 9px;
+              margin-bottom: 2px;
+            }
+            .temp-range-box .value {
+              font-weight: bold;
+              font-size: 14px;
+              color: #333;
+            }
+            .temp-range-box .unit {
+              font-size: 11px;
+              color: #666;
+            }
+            .temp-item {
+              margin-bottom: 6px;
+            }
+            .temp-item:last-child {
+              margin-bottom: 0;
+            }
+            .construction-note {
+              font-size: 9px;
+              color: #e67e22;
+              margin-top: 3px;
             }
             .comment-box { 
               background: #f9f9f9; 
-              padding: 8px; 
+              padding: 6px; 
               border: 1px solid #ddd;
               border-radius: 3px; 
               white-space: pre-wrap;
               font-size: 10px;
               line-height: 1.4;
-              margin-bottom: 5px;
+              margin-bottom: 4px;
             }
             .additional-comment {
-              min-height: 45px;
+              min-height: 40px;
             }
             @media print {
               body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-              .page { padding: 8mm; }
+              .page { padding: 6mm; }
             }
           </style>
         </head>
@@ -1870,11 +1972,30 @@
             </table>
 
             <div class="section-title">📷 画像</div>
-            <div class="images">
+            <div class="image-row">
               ${pin.images?.visible ? `<div class="img-box"><p>可視画像</p><img src="${pin.images.visible.url}"></div>` : ''}
               ${pin.images?.infrared ? `<div class="img-box"><p>赤外線画像</p><img src="${pin.images.infrared.url}"></div>` : ''}
-              ${pin.images?.color8 ? `<div class="img-box"><p>8色画像</p><img src="${pin.images.color8.url}"></div>` : ''}
             </div>
+            
+            ${pin.images?.color8 ? `
+              <div class="color8-container">
+                <div class="img-box">
+                  <p>8色画像</p>
+                  <img src="${pin.images.color8.url}">
+                  <div class="construction-note">※ 白枠内が施工箇所</div>
+                </div>
+                <div class="temp-range-box">
+                  <div class="temp-item">
+                    <div class="label">温度レンジ Max</div>
+                    <div class="value">${pin.tempMax || '-'}<span class="unit"> ℃</span></div>
+                  </div>
+                  <div class="temp-item">
+                    <div class="label">温度レンジ Min</div>
+                    <div class="value">${pin.tempMin || '-'}<span class="unit"> ℃</span></div>
+                  </div>
+                </div>
+              </div>
+            ` : ''}
 
             <div class="section-title">📝 解析コメント</div>
             <div class="comment-box">${pin.comment || 'コメントなし'}</div>
@@ -1920,6 +2041,7 @@
     window.uploadMultipleImages = uploadMultipleImages;
     window.updatePinName = updatePinName;
     window.updateDistance = updateDistance;
+    window.updateTempRange = updateTempRange;
     window.updateJudgment = updateJudgment;
     window.updateJudgmentFlow = updateJudgmentFlow;
     window.updateComment = updateComment;
