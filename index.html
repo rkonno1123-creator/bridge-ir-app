@@ -148,6 +148,7 @@
     .pin.observe { background: #f39c12; }
     .pin.floating { background: #e74c3c; }
     .pin.unanalyzed { background: #666; }
+    .pin.completed { box-shadow: 0 0 0 3px #fff; }
     .pin-number {
       position: absolute;
       top: 50%;
@@ -801,7 +802,7 @@
               <div class="drawing-wrapper" id="drawingWrapper">
                 <img src="${currentDrawing.url}" class="drawing-image" id="drawingImage" draggable="false">
                 ${currentPins.map((pin, i) => `
-                  <div class="pin ${pin.analyzed && pin.judgment ? pin.judgment : 'unanalyzed'} ${pin.id === state.selectedPinId ? 'selected' : ''}"
+                  <div class="pin ${pin.judgment || 'unanalyzed'} ${pin.analyzed ? 'completed' : ''} ${pin.id === state.selectedPinId ? 'selected' : ''}"
                        style="left: ${pin.x}%; top: ${pin.y}%; cursor: ${state.editMode ? 'move' : 'pointer'};"
                        onmousedown="handlePinMouseDown(event, '${pin.id}')"
                        ontouchstart="handlePinTouchStart(event, '${pin.id}')">
