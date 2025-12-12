@@ -243,6 +243,15 @@
       color: #666;
       margin-top: 8px;
     }
+    .image-caption {
+      font-size: 0.8rem;
+      color: #f39c12;
+      margin-top: 8px;
+      padding: 6px 10px;
+      background: rgba(243, 156, 18, 0.1);
+      border-radius: 4px;
+      border-left: 3px solid #f39c12;
+    }
     
     /* アップロードボタン */
     .upload-area {
@@ -882,6 +891,7 @@
                     ${selectedPin.images?.color8 ? `
                       <img src="${selectedPin.images.color8.url}" alt="8色画像">
                       <div class="image-filename">${selectedPin.images.color8.filename}</div>
+                      <div class="image-caption">※ 白枠内が施工箇所です</div>
                     ` : `<div class="no-image">画像なし</div>`}
                   </div>
                   <div class="upload-area">
