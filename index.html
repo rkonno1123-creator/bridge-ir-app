@@ -958,10 +958,13 @@
                 
                 <!-- 解析タブ -->
                 <div class="tab-pane ${state.activeTab === 'analysis' ? 'active' : ''}">
-                  <div class="form-group">
-                    <label>ピン名 / 写真番号</label>
-                    <input type="text" id="pinName" value="${selectedPin.name || ''}" 
-                           placeholder="例: T00484" onchange="updatePinName(this.value)">
+                  <div class="form-group" style="display:flex; align-items:center; gap:10px;">
+                    <div style="flex:1;">
+                      <label>ピン名 / 写真番号</label>
+                      <input type="text" id="pinName" value="${selectedPin.name || ''}" 
+                             placeholder="例: T00484" onchange="updatePinName(this.value)">
+                    </div>
+                    <button class="btn btn-danger" style="margin-top:20px;" onclick="deletePin()">🗑️</button>
                   </div>
                   
                   <div class="form-group">
@@ -996,14 +999,7 @@
                   
                   <div class="form-group">
                     <label>解析コメント</label>
-                    <textarea id="comment" placeholder="解析結果を入力..."
-                              onblur="updateComment(this.value)">${selectedPin.comment || ''}</textarea>
-                  </div>
-                  
-                  <div class="form-group">
-                    <label>追加コメント</label>
-                    <textarea id="additionalComment" placeholder="追加の所見があれば..."
-                              onblur="updateAdditionalComment(this.value)">${selectedPin.additionalComment || ''}</textarea>
+                    <textarea id="comment" placeholder="解析結果を入力...">${selectedPin.comment || ''}</textarea>
                   </div>
                   
                   <button class="btn btn-primary" style="width:100%; margin-bottom:10px;" 
@@ -1011,13 +1007,19 @@
                     ✨ コメント自動生成
                   </button>
                   
-                  <button class="btn ${selectedPin.analyzed ? 'btn-success' : 'btn-export'}" onclick="toggleAnalyzed()">
-                    ${selectedPin.analyzed ? '✅ 解析完了' : '📝 解析完了にする'}
+                  <div class="form-group">
+                    <label>追加コメント</label>
+                    <textarea id="additionalComment" placeholder="追加の所見があれば...">${selectedPin.additionalComment || ''}</textarea>
+                  </div>
+                  
+                  <button class="btn btn-secondary" style="width:100%; margin-bottom:10px;" 
+                          onclick="saveComments()">
+                    💾 コメント保存
                   </button>
                   
-                  <div class="btn-group">
-                    <button class="btn btn-danger" onclick="deletePin()">🗑️ ピン削除</button>
-                  </div>
+                  <button class="btn ${selectedPin.analyzed ? 'btn-success' : 'btn-export'}" style="width:100%;" onclick="toggleAnalyzed()">
+                    ${selectedPin.analyzed ? '✅ 解析完了' : '📝 解析完了にする'}
+                  </button>
                 </div>
               </div>
             </div>
@@ -1468,6 +1470,29 @@
       if (pin) {
         pin.additionalComment = value;
         await db.collection('pins').doc(state.selectedPinId).update({ additionalComment: value });
+      }
+    }
+
+    // コメント保存（両方まとめて保存）
+    async function saveComments() {
+      if (!state.selectedPinId) return;
+      const pin = state.pins.find(p => p.id === state.selectedPinId);
+      if (!pin) return;
+      
+      const comment = document.getElementById('comment').value;
+      const additionalComment = document.getElementById('additionalComment').value;
+      
+      try {
+        pin.comment = comment;
+        pin.additionalComment = additionalComment;
+        await db.collection('pins').doc(state.selectedPinId).update({ 
+          comment: comment,
+          additionalComment: additionalComment 
+        });
+        alert('💾 コメントを保存しました');
+      } catch (error) {
+        console.error('保存エラー:', error);
+        alert('保存に失敗しました');
       }
     }
 
@@ -2047,6 +2072,7 @@
     window.updateJudgmentFlow = updateJudgmentFlow;
     window.updateComment = updateComment;
     window.updateAdditionalComment = updateAdditionalComment;
+    window.saveComments = saveComments;
     window.generateComment = generateComment;
     window.deletePin = deletePin;
     window.toggleAnalyzed = toggleAnalyzed;
