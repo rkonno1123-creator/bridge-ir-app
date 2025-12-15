@@ -736,7 +736,10 @@
       draggingPin: null,
       editMode: false,
       isDrawingArea: false,
+      isMovingArea: false,
       tempArea: null,
+      areaAspectRatio: 1,
+      lastThermalArea: null,
       showPdfModal: false,
       selectedPinsForExport: [],
       showProjectModal: false
@@ -930,8 +933,14 @@
                     <button class="btn ${state.isDrawingArea ? 'btn-warning' : 'btn-secondary'}" onclick="toggleDrawingArea()">
                       ${state.isDrawingArea ? '✏️ 描画中...' : '📐 IR範囲を描画'}
                     </button>
+                    ${state.lastThermalArea && !selectedPin.thermalArea ? `
+                      <button class="btn btn-secondary" onclick="pasteIRArea()">📋 前のIR範囲をコピー</button>
+                    ` : ''}
                     ${selectedPin.thermalArea ? `
-                      <button class="btn btn-danger" onclick="deleteThermalArea()">🗑️ 範囲削除</button>
+                      <button class="btn ${state.isMovingArea ? 'btn-warning' : 'btn-secondary'}" onclick="startMoveIRArea()">
+                        ${state.isMovingArea ? '👆 クリックで移動' : '↔️ 範囲を移動'}
+                      </button>
+                      <button class="btn btn-danger" onclick="deleteThermalArea()">🗑️</button>
                     ` : ''}
                   </div>
                   <div class="upload-area">
@@ -1720,6 +1729,12 @@
 
     // 範囲描画開始（マウス）
     function handleAreaMouseDown(e) {
+      // 移動モードの場合
+      if (state.isMovingArea) {
+        moveIRArea(e);
+        return;
+      }
+      
       if (!state.isDrawingArea) return;
       
       const img = document.getElementById('visibleImage');
@@ -1731,6 +1746,7 @@
       const y = ((e.clientY - rect.top) / rect.height) * 100;
       
       state.tempArea = { startX: x, startY: y, endX: x, endY: y };
+      state.areaAspectRatio = rect.width / rect.height; // 画像のアスペクト比を保存
       render();
     }
 
@@ -1746,8 +1762,13 @@
       const x = ((e.clientX - rect.left) / rect.width) * 100;
       const y = ((e.clientY - rect.top) / rect.height) * 100;
       
+      // 4:3固定で計算
+      const width = x - state.tempArea.startX;
+      // 画像のアスペクト比を考慮して高さを計算（4:3 = 横:縦）
+      const height = (width / 4) * 3 * state.areaAspectRatio;
+      
       state.tempArea.endX = x;
-      state.tempArea.endY = y;
+      state.tempArea.endY = state.tempArea.startY + height;
       render();
     }
 
@@ -1760,6 +1781,11 @@
       
       // 範囲を確定して保存
       pin.thermalArea = { ...state.tempArea };
+      
+      // 次回コピー用にサイズを保存
+      const width = Math.abs(state.tempArea.endX - state.tempArea.startX);
+      const height = Math.abs(state.tempArea.endY - state.tempArea.startY);
+      state.lastThermalArea = { width, height };
       
       try {
         await db.collection('pins').doc(state.selectedPinId).update({
@@ -1776,6 +1802,13 @@
 
     // 範囲描画開始（タッチ）
     function handleAreaTouchStart(e) {
+      // 移動モードの場合
+      if (state.isMovingArea) {
+        const touch = e.touches[0];
+        moveIRAreaTouch(touch);
+        return;
+      }
+      
       if (!state.isDrawingArea) return;
       
       const img = document.getElementById('visibleImage');
@@ -1788,6 +1821,43 @@
       const y = ((touch.clientY - rect.top) / rect.height) * 100;
       
       state.tempArea = { startX: x, startY: y, endX: x, endY: y };
+      state.areaAspectRatio = rect.width / rect.height;
+      render();
+    }
+
+    // IR範囲の移動（タッチ）
+    async function moveIRAreaTouch(touch) {
+      if (!state.isMovingArea || !state.selectedPinId) return;
+      
+      const img = document.getElementById('visibleImage');
+      if (!img) return;
+      
+      const pin = state.pins.find(p => p.id === state.selectedPinId);
+      if (!pin || !pin.thermalArea) return;
+      
+      const rect = img.getBoundingClientRect();
+      const clickX = ((touch.clientX - rect.left) / rect.width) * 100;
+      const clickY = ((touch.clientY - rect.top) / rect.height) * 100;
+      
+      const width = Math.abs(pin.thermalArea.endX - pin.thermalArea.startX);
+      const height = Math.abs(pin.thermalArea.endY - pin.thermalArea.startY);
+      
+      pin.thermalArea = {
+        startX: clickX - width / 2,
+        startY: clickY - height / 2,
+        endX: clickX + width / 2,
+        endY: clickY + height / 2
+      };
+      
+      try {
+        await db.collection('pins').doc(state.selectedPinId).update({
+          thermalArea: pin.thermalArea
+        });
+      } catch (error) {
+        console.error('範囲移動エラー:', error);
+      }
+      
+      state.isMovingArea = false;
       render();
     }
 
@@ -1804,8 +1874,12 @@
       const x = ((touch.clientX - rect.left) / rect.width) * 100;
       const y = ((touch.clientY - rect.top) / rect.height) * 100;
       
+      // 4:3固定で計算
+      const width = x - state.tempArea.startX;
+      const height = (width / 4) * 3 * state.areaAspectRatio;
+      
       state.tempArea.endX = x;
-      state.tempArea.endY = y;
+      state.tempArea.endY = state.tempArea.startY + height;
       render();
     }
 
@@ -1826,6 +1900,83 @@
         console.error('範囲削除エラー:', error);
       }
       
+      render();
+    }
+
+    // IR範囲をペースト（前のピンのサイズでコピー）
+    async function pasteIRArea() {
+      if (!state.selectedPinId || !state.lastThermalArea) return;
+      
+      const pin = state.pins.find(p => p.id === state.selectedPinId);
+      if (!pin) return;
+      
+      // 画像の中央に配置
+      const width = state.lastThermalArea.width;
+      const height = state.lastThermalArea.height;
+      const centerX = 50;
+      const centerY = 50;
+      
+      pin.thermalArea = {
+        startX: centerX - width / 2,
+        startY: centerY - height / 2,
+        endX: centerX + width / 2,
+        endY: centerY + height / 2
+      };
+      
+      try {
+        await db.collection('pins').doc(state.selectedPinId).update({
+          thermalArea: pin.thermalArea
+        });
+      } catch (error) {
+        console.error('範囲ペーストエラー:', error);
+      }
+      
+      // 移動モードを開始
+      state.isMovingArea = true;
+      render();
+    }
+
+    // IR範囲の移動モードを開始
+    function startMoveIRArea() {
+      state.isMovingArea = true;
+      render();
+    }
+
+    // IR範囲の移動（クリックした位置を中心に）
+    async function moveIRArea(e) {
+      if (!state.isMovingArea || !state.selectedPinId) return;
+      
+      const img = document.getElementById('visibleImage');
+      if (!img) return;
+      
+      const pin = state.pins.find(p => p.id === state.selectedPinId);
+      if (!pin || !pin.thermalArea) return;
+      
+      const rect = img.getBoundingClientRect();
+      const clickX = ((e.clientX - rect.left) / rect.width) * 100;
+      const clickY = ((e.clientY - rect.top) / rect.height) * 100;
+      
+      // 現在のサイズを維持
+      const width = Math.abs(pin.thermalArea.endX - pin.thermalArea.startX);
+      const height = Math.abs(pin.thermalArea.endY - pin.thermalArea.startY);
+      
+      // クリック位置を中心に配置
+      pin.thermalArea = {
+        startX: clickX - width / 2,
+        startY: clickY - height / 2,
+        endX: clickX + width / 2,
+        endY: clickY + height / 2
+      };
+      
+      try {
+        await db.collection('pins').doc(state.selectedPinId).update({
+          thermalArea: pin.thermalArea
+        });
+      } catch (error) {
+        console.error('範囲移動エラー:', error);
+      }
+      
+      state.isMovingArea = false;
       render();
     }
 
@@ -2263,6 +2414,9 @@
     window.handleAreaTouchStart = handleAreaTouchStart;
     window.handleAreaTouchMove = handleAreaTouchMove;
     window.deleteThermalArea = deleteThermalArea;
+    window.pasteIRArea = pasteIRArea;
+    window.startMoveIRArea = startMoveIRArea;
+    window.moveIRArea = moveIRArea;
     window.handlePinMouseDown = handlePinMouseDown;
     window.handlePinDrag = handlePinDrag;
     window.handlePinDragEnd = handlePinDragEnd;
