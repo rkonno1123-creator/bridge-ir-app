@@ -289,6 +289,46 @@
       color: #888;
       font-size: 0.9rem;
     }
+    .color8-list {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .color8-item {
+      background: #0a0a15;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 10px;
+    }
+    .color8-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .color8-index {
+      background: #00d4ff;
+      color: #000;
+      font-weight: bold;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 0.8rem;
+    }
+    .btn-delete-small {
+      background: transparent;
+      border: 1px solid #e74c3c;
+      color: #e74c3c;
+      padding: 4px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.8rem;
+    }
+    .btn-delete-small:hover {
+      background: #e74c3c;
+      color: #fff;
+    }
     
     /* アップロードボタン */
     .upload-area {
@@ -924,35 +964,44 @@
                 
                 <!-- 8色画像タブ -->
                 <div class="tab-pane ${state.activeTab === 'color8' ? 'active' : ''}">
-                  <div class="image-display">
-                    ${selectedPin.images?.color8 ? `
-                      <img src="${selectedPin.images.color8.url}" alt="8色画像">
-                      <div class="image-filename">${selectedPin.images.color8.filename}</div>
-                      <div class="image-caption">※ 白枠内が施工箇所です</div>
-                    ` : `<div class="no-image">画像なし</div>`}
-                  </div>
-                  <div class="temp-range-inputs">
-                    <div class="temp-input-group">
-                      <label>温度レンジ Max</label>
-                      <div class="temp-input-wrapper">
-                        <input type="number" step="0.1" value="${selectedPin.tempMax != null ? Number(selectedPin.tempMax).toFixed(1) : ''}" 
-                               placeholder="17.3" onchange="updateTempRange('tempMax', this.value)">
-                        <span class="temp-unit">℃</span>
-                      </div>
-                    </div>
-                    <div class="temp-input-group">
-                      <label>温度レンジ Min</label>
-                      <div class="temp-input-wrapper">
-                        <input type="number" step="0.1" value="${selectedPin.tempMin != null ? Number(selectedPin.tempMin).toFixed(1) : ''}" 
-                               placeholder="14.0" onchange="updateTempRange('tempMin', this.value)">
-                        <span class="temp-unit">℃</span>
-                      </div>
-                    </div>
+                  <div class="color8-list">
+                    ${(selectedPin.color8Images || []).length > 0 ? 
+                      (selectedPin.color8Images || []).map((img, index) => `
+                        <div class="color8-item">
+                          <div class="color8-header">
+                            <span class="color8-index">${index + 1}</span>
+                            <button class="btn-delete-small" onclick="deleteColor8Image(${index})">🗑️</button>
+                          </div>
+                          <div class="image-display">
+                            <img src="${img.url}" alt="8色画像${index + 1}">
+                            <div class="image-filename">${img.filename}</div>
+                            <div class="image-caption">※ 白枠内が施工箇所です</div>
+                          </div>
+                          <div class="temp-range-inputs">
+                            <div class="temp-input-group">
+                              <label>Max</label>
+                              <div class="temp-input-wrapper">
+                                <input type="number" step="0.1" value="${img.tempMax != null ? Number(img.tempMax).toFixed(1) : ''}" 
+                                       placeholder="17.3" onchange="updateColor8Temp(${index}, 'tempMax', this.value)">
+                                <span class="temp-unit">℃</span>
+                              </div>
+                            </div>
+                            <div class="temp-input-group">
+                              <label>Min</label>
+                              <div class="temp-input-wrapper">
+                                <input type="number" step="0.1" value="${img.tempMin != null ? Number(img.tempMin).toFixed(1) : ''}" 
+                                       placeholder="14.0" onchange="updateColor8Temp(${index}, 'tempMin', this.value)">
+                                <span class="temp-unit">℃</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      `).join('') : `<div class="no-image">8色画像なし</div>`}
                   </div>
                   <div class="upload-area">
                     <label class="upload-btn">
-                      🎨 8色画像をアップロード
-                      <input type="file" accept="image/*" onchange="uploadImage('color8', this.files[0])">
+                      🎨 8色画像を追加
+                      <input type="file" accept="image/*" onchange="uploadColor8Image(this.files[0])">
                     </label>
                   </div>
                 </div>
@@ -1116,10 +1165,19 @@
         const pinsSnapshot = await db.collection('pins')
           .where('drawingId', '==', drawingId)
           .get();
-        state.pins = pinsSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
+        state.pins = pinsSnapshot.docs.map(doc => {
+          const data = doc.data();
+          // 旧形式（images.color8 + tempMax/Min）を新形式（color8Images）に変換
+          if (data.images?.color8 && !data.color8Images) {
+            data.color8Images = [{
+              url: data.images.color8.url,
+              filename: data.images.color8.filename,
+              tempMax: data.tempMax || null,
+              tempMin: data.tempMin || null
+            }];
+          }
+          return { id: doc.id, ...data };
+        });
       } catch (error) {
         console.error('ピン読み込みエラー:', error);
       }
@@ -1327,6 +1385,73 @@
       }
     }
 
+    // 8色画像をアップロード（複数対応）
+    async function uploadColor8Image(file) {
+      if (!file || !state.selectedPinId) return;
+
+      const pin = state.pins.find(p => p.id === state.selectedPinId);
+      if (!pin) return;
+
+      try {
+        const filename = `${Date.now()}_${file.name}`;
+        const ref = storage.ref().child(`pins/${state.selectedPinId}/color8/${filename}`);
+        await ref.put(file);
+        const url = await ref.getDownloadURL();
+
+        pin.color8Images = pin.color8Images || [];
+        pin.color8Images.push({ url: url, filename: file.name, tempMax: null, tempMin: null });
+
+        await db.collection('pins').doc(state.selectedPinId).update({
+          color8Images: pin.color8Images
+        });
+        
+        render();
+        alert('8色画像を追加しました');
+      } catch (error) {
+        console.error('アップロードエラー:', error);
+        alert('アップロードに失敗しました');
+      }
+    }
+
+    // 8色画像を削除
+    async function deleteColor8Image(index) {
+      if (!state.selectedPinId) return;
+      if (!confirm('この8色画像を削除しますか？')) return;
+
+      const pin = state.pins.find(p => p.id === state.selectedPinId);
+      if (!pin || !pin.color8Images) return;
+
+      try {
+        pin.color8Images.splice(index, 1);
+        await db.collection('pins').doc(state.selectedPinId).update({
+          color8Images: pin.color8Images
+        });
+        render();
+      } catch (error) {
+        console.error('削除エラー:', error);
+        alert('削除に失敗しました');
+      }
+    }
+
+    // 8色画像の温度を更新
+    async function updateColor8Temp(index, field, value) {
+      if (!state.selectedPinId) return;
+
+      const pin = state.pins.find(p => p.id === state.selectedPinId);
+      if (!pin || !pin.color8Images || !pin.color8Images[index]) return;
+
+      const temp = value ? parseFloat(value) : null;
+      pin.color8Images[index][field] = temp;
+
+      try {
+        await db.collection('pins').doc(state.selectedPinId).update({
+          color8Images: pin.color8Images
+        });
+      } catch (error) {
+        console.error('温度更新エラー:', error);
+      }
+    }
+
     // 複数画像自動振り分けアップロード
     async function uploadMultipleImages(files) {
       if (!files || files.length === 0 || !state.selectedPinId) return;
@@ -1337,6 +1462,7 @@
       let uploadCount = 0;
       let extractedName = null;
       pin.images = pin.images || {};
+      pin.color8Images = pin.color8Images || [];
 
       try {
         for (const file of files) {
@@ -1373,11 +1499,19 @@
           await ref.put(file);
           const url = await ref.getDownloadURL();
 
-          await db.collection('pins').doc(state.selectedPinId).update({
-            [`images.${type}`]: { url: url, filename: file.name }
-          });
-
-          pin.images[type] = { url: url, filename: file.name };
+          if (type === 'color8') {
+            // 8色画像は配列に追加
+            pin.color8Images.push({ url: url, filename: file.name, tempMax: null, tempMin: null });
+            await db.collection('pins').doc(state.selectedPinId).update({
+              color8Images: pin.color8Images
+            });
+          } else {
+            // 可視・赤外線は従来通り
+            await db.collection('pins').doc(state.selectedPinId).update({
+              [`images.${type}`]: { url: url, filename: file.name }
+            });
+            pin.images[type] = { url: url, filename: file.name };
+          }
           uploadCount++;
         }
 
@@ -2004,25 +2138,26 @@
               ${pin.images?.infrared ? `<div class="img-box"><p>赤外線画像</p><img src="${pin.images.infrared.url}"></div>` : ''}
             </div>
             
-            ${pin.images?.color8 ? `
-              <div class="color8-container">
-                <div class="img-box">
-                  <p>8色画像</p>
-                  <img src="${pin.images.color8.url}">
-                  <div class="construction-note">※ 白枠内が施工箇所</div>
-                </div>
-                <div class="temp-range-box">
-                  <div class="temp-item">
-                    <div class="label">温度レンジ Max</div>
-                    <div class="value">${pin.tempMax != null ? Number(pin.tempMax).toFixed(1) : '-'}<span class="unit"> ℃</span></div>
+            ${(pin.color8Images || []).length > 0 ? 
+              (pin.color8Images || []).map((img, idx) => `
+                <div class="color8-container">
+                  <div class="img-box">
+                    <p>8色画像${(pin.color8Images || []).length > 1 ? ' (' + (idx + 1) + ')' : ''}</p>
+                    <img src="${img.url}">
+                    <div class="construction-note">※ 白枠内が施工箇所</div>
                   </div>
-                  <div class="temp-item">
-                    <div class="label">温度レンジ Min</div>
-                    <div class="value">${pin.tempMin != null ? Number(pin.tempMin).toFixed(1) : '-'}<span class="unit"> ℃</span></div>
+                  <div class="temp-range-box">
+                    <div class="temp-item">
+                      <div class="label">温度レンジ Max</div>
+                      <div class="value">${img.tempMax != null ? Number(img.tempMax).toFixed(1) : '-'}<span class="unit"> ℃</span></div>
+                    </div>
+                    <div class="temp-item">
+                      <div class="label">温度レンジ Min</div>
+                      <div class="value">${img.tempMin != null ? Number(img.tempMin).toFixed(1) : '-'}<span class="unit"> ℃</span></div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ` : ''}
+              `).join('') : ''}
 
             <div class="section-title">📝 解析コメント</div>
             <div class="comment-box">${pin.comment || 'コメントなし'}</div>
@@ -2065,6 +2200,9 @@
     window.closePanel = closePanel;
     window.setTab = setTab;
     window.uploadImage = uploadImage;
+    window.uploadColor8Image = uploadColor8Image;
+    window.deleteColor8Image = deleteColor8Image;
+    window.updateColor8Temp = updateColor8Temp;
     window.uploadMultipleImages = uploadMultipleImages;
     window.updatePinName = updatePinName;
     window.updateDistance = updateDistance;
