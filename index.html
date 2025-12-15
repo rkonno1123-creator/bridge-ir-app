@@ -2060,8 +2060,46 @@
             }
             .color8-container {
               display: flex;
+              flex-wrap: wrap;
               gap: 10px;
-              align-items: center;
+              margin-bottom: 6px;
+            }
+            .color8-item-pdf {
+              flex: 0 0 auto;
+              text-align: center;
+            }
+            .color8-item-pdf img {
+              max-width: 180px;
+              max-height: 120px;
+              border: 1px solid #ddd;
+            }
+            .color8-item-pdf p {
+              font-size: 9px;
+              margin-bottom: 2px;
+              color: #666;
+            }
+            .temp-range-vertical {
+              display: flex;
+              gap: 15px;
+              margin-top: 4px;
+              justify-content: center;
+            }
+            .temp-item-v {
+              text-align: center;
+            }
+            .temp-item-v .label {
+              font-size: 8px;
+              color: #666;
+            }
+            .temp-item-v .sublabel {
+              font-size: 9px;
+              font-weight: bold;
+              color: #333;
+            }
+            .temp-item-v .value {
+              font-size: 12px;
+              font-weight: bold;
+              color: #000;
             }
             .temp-range-box {
               background: #f5f5f5;
@@ -2138,26 +2176,29 @@
               ${pin.images?.infrared ? `<div class="img-box"><p>赤外線画像</p><img src="${pin.images.infrared.url}"></div>` : ''}
             </div>
             
-            ${(pin.color8Images || []).length > 0 ? 
-              (pin.color8Images || []).map((img, idx) => `
-                <div class="color8-container">
-                  <div class="img-box">
+            ${(pin.color8Images || []).length > 0 ? `
+              <div class="color8-container">
+                ${(pin.color8Images || []).map((img, idx) => `
+                  <div class="color8-item-pdf">
                     <p>8色画像${(pin.color8Images || []).length > 1 ? ' (' + (idx + 1) + ')' : ''}</p>
                     <img src="${img.url}">
                     <div class="construction-note">※ 白枠内が施工箇所</div>
-                  </div>
-                  <div class="temp-range-box">
-                    <div class="temp-item">
-                      <div class="label">温度レンジ Max</div>
-                      <div class="value">${img.tempMax != null ? Number(img.tempMax).toFixed(1) : '-'}<span class="unit"> ℃</span></div>
+                    <div class="temp-range-vertical">
+                      <div class="temp-item-v">
+                        <div class="label">温度レンジ</div>
+                        <div class="sublabel">Max</div>
+                        <div class="value">${img.tempMax != null ? Number(img.tempMax).toFixed(1) : '-'}℃</div>
+                      </div>
+                      <div class="temp-item-v">
+                        <div class="label">温度レンジ</div>
+                        <div class="sublabel">Min</div>
+                        <div class="value">${img.tempMin != null ? Number(img.tempMin).toFixed(1) : '-'}℃</div>
+                      </div>
                     </div>
-                    <div class="temp-item">
-                      <div class="label">温度レンジ Min</div>
-                      <div class="value">${img.tempMin != null ? Number(img.tempMin).toFixed(1) : '-'}<span class="unit"> ℃</span></div>
-                    </div>
                   </div>
-                </div>
-              `).join('') : ''}
+                `).join('')}
+              </div>
+            ` : ''}
 
             <div class="section-title">📝 解析コメント</div>
             <div class="comment-box">${pin.comment || 'コメントなし'}</div>
