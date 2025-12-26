@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ログイン - 橋梁赤外線解析システム</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Meiryo UI', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .login-container {
+      background: #16213e;
+      border: 1px solid #00d4ff33;
+      border-radius: 12px;
+      padding: 40px;
+      max-width: 400px;
+      width: 100%;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    }
+    h1 {
+      color: #00d4ff;
+      font-size: 1.5rem;
+      margin-bottom: 10px;
+      text-align: center;
+    }
+    h2 {
+      color: #aaa;
+      font-size: 1rem;
+      margin-bottom: 30px;
+      text-align: center;
+      font-weight: normal;
+    }
+    .form-group {
+      margin-bottom: 20px;
+    }
+    label {
+      display: block;
+      color: #888;
+      font-size: 0.9rem;
+      margin-bottom: 8px;
+    }
+    input[type="password"] {
+      width: 100%;
+      padding: 12px;
+      background: #0a0a15;
+      border: 1px solid #333;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 1rem;
+    }
+    input[type="password"]:focus {
+      outline: none;
+      border-color: #00d4ff;
+    }
+    .error {
+      background: rgba(231, 76, 60, 0.2);
+      border: 1px solid #e74c3c;
+      color: #ff6b6b;
+      padding: 12px;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      margin-bottom: 20px;
+      display: none;
+    }
+    .error.show {
+      display: block;
+    }
+    button {
+      width: 100%;
+      padding: 14px;
+      background: #00d4ff;
+      border: none;
+      border-radius: 6px;
+      color: #000;
+      font-size: 1rem;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button:hover {
+      background: #00a8cc;
+    }
+    button:disabled {
+      background: #444;
+      color: #666;
+      cursor: not-allowed;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-container">
+    <h1>🔥 橋梁赤外線解析システム</h1>
+    <h2>ログイン</h2>
+    
+    <div class="error" id="error"></div>
+    
+    <form id="loginForm">
+      <div class="form-group">
+        <label for="password">パスワード</label>
+        <input
+          type="password"
+          id="password"
+          placeholder="パスワードを入力"
+          required
+          autofocus
+        />
+      </div>
+      
+      <button type="submit" id="submitBtn">ログイン</button>
+    </form>
+  </div>
+
+  <script>
+    // パスワード（環境変数から取得できないため、ここに設定）
+    // 本番環境では、より安全な方法（サーバーサイド認証など）を推奨
+    const SITE_PASSWORD = '482'; // 環境変数から設定する場合は、ビルド時に置換
+
+    // Cookie設定関数
+    function setCookie(name, value, days) {
+      const expires = new Date();
+      expires.setTime(expires.getTime() + days * 24 * 60 * 60 * 1000);
+      document.cookie = `${name}=${value};expires=${expires.toUTCString()};path=/`;
+    }
+
+    // Cookie取得関数
+    function getCookie(name) {
+      const nameEQ = name + "=";
+      const ca = document.cookie.split(';');
+      for (let i = 0; i < ca.length; i++) {
+        let c = ca[i];
+        while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+        if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
+      }
+      return null;
+    }
+
+    // 既に認証されている場合はリダイレクト
+    if (getCookie('auth-token') === 'authenticated') {
+      const redirect = new URLSearchParams(window.location.search).get('redirect') || 'index.html';
+      window.location.href = redirect;
+    }
+
+    // フォーム送信
+    document.getElementById('loginForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      
+      const password = document.getElementById('password').value;
+      const errorDiv = document.getElementById('error');
+      const submitBtn = document.getElementById('submitBtn');
+      
+      errorDiv.classList.remove('show');
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'ログイン中...';
+      
+      // パスワードチェック
+      if (password === SITE_PASSWORD) {
+        // 認証成功
+        setCookie('auth-token', 'authenticated', 7); // 7日間有効
+        
+        const redirect = new URLSearchParams(window.location.search).get('redirect') || 'index.html';
+        window.location.href = redirect;
+      } else {
+        // 認証失敗
+        errorDiv.textContent = 'パスワードが正しくありません';
+        errorDiv.classList.add('show');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'ログイン';
+        document.getElementById('password').value = '';
+        document.getElementById('password').focus();
+      }
+    });
+  </script>
+</body>
+</html>
+
+
+
